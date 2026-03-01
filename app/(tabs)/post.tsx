@@ -51,7 +51,7 @@ const categorySuggestions = [
   'Other',
 ];
 
-export default function TriageScreen() {
+export default function PostScreen() {
   const { adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
@@ -261,7 +261,7 @@ export default function TriageScreen() {
         colorScheme={colorScheme}
         karma={currentUser.karma}
         rightIcon={<MoreVertical size={15} color={theme.textMuted} />}
-        subtitle="triage engine"
+        subtitle="post"
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>

@@ -75,9 +75,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="triage"
+        name="post"
         options={{
-          title: 'triage',
+          title: 'post',
           tabBarIcon: ({ color, focused }) => (
             <View
               style={[
