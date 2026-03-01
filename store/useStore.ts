@@ -216,6 +216,15 @@ const getMimeType = (extension: string) => {
     }
 };
 
+const base64ToUint8Array = (base64: string): Uint8Array => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+};
+
 const uploadImageIfNeeded = async (rawUri: string | undefined, userId: string) => {
     if (!rawUri) return undefined;
     const uri = rawUri.trim();
@@ -223,26 +232,47 @@ const uploadImageIfNeeded = async (rawUri: string | undefined, userId: string) =
     if (isRemoteImageUrl(uri)) return uri;
 
     const supabase = getSupabaseClient();
-    const extension = getFileExtension(uri);
-    const mimeType = getMimeType(extension);
-    const response = await fetch(uri);
-    if (!response.ok) {
-        throw new Error('Unable to read selected image for upload.');
+
+    // Accept base64 data URIs (data:image/jpeg;base64,...) — the most reliable
+    // way to get image data from expo-image-picker without reading local file URIs.
+    if (uri.startsWith('data:')) {
+        const commaIdx = uri.indexOf(',');
+        const header = uri.slice(0, commaIdx);
+        const base64Data = uri.slice(commaIdx + 1);
+        const mimeType = header.split(':')[1]?.split(';')[0] ?? 'image/jpeg';
+        const extension = mimeType.split('/')[1] ?? 'jpg';
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+        const storagePath = `${userId}/${fileName}`;
+        const bytes = base64ToUint8Array(base64Data);
+
+        const { data, error } = await supabase.storage
+            .from(IMAGE_BUCKET)
+            .upload(storagePath, bytes, { contentType: mimeType, upsert: false });
+
+        if (error) throw error;
+        const { data: publicUrlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(data.path);
+        return publicUrlData.publicUrl;
     }
 
-    const blob = await response.blob();
+    // Fallback: XHR for local file:// URIs (used by triage screen)
+    const extension = getFileExtension(uri);
+    const mimeType = getMimeType(extension);
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', uri, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = () => resolve(xhr.response as ArrayBuffer);
+        xhr.onerror = () => reject(new Error('Unable to read selected image for upload.'));
+        xhr.send();
+    });
     const storagePath = `${userId}/${fileName}`;
 
     const { data, error } = await supabase.storage
         .from(IMAGE_BUCKET)
-        .upload(storagePath, blob, {
-            contentType: mimeType,
-            upsert: false,
-        });
+        .upload(storagePath, arrayBuffer, { contentType: mimeType, upsert: false });
 
     if (error) throw error;
-
     const { data: publicUrlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(data.path);
     return publicUrlData.publicUrl;
 };
@@ -614,7 +644,8 @@ export const useStore = create<AppState>((set, get) => ({
         let uploadedImageUrl: string | undefined;
         try {
             uploadedImageUrl = await uploadImageIfNeeded(post.imageUrl, currentUser.id);
-        } catch {
+        } catch (uploadError) {
+            set({ backendError: getFriendlyErrorMessage(uploadError) });
             return null;
         }
 
@@ -627,7 +658,10 @@ export const useStore = create<AppState>((set, get) => ({
             offer_state: 'open',
         });
 
-        if (error) return null;
+        if (error) {
+            set({ backendError: error.message });
+            return null;
+        }
 
         await get().refreshAllData();
         const created = get().feedPosts[0] ?? null;

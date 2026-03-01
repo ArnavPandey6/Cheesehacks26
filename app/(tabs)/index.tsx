@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Modal,
+  PanResponder,
   Platform,
   SafeAreaView,
   StyleSheet,
@@ -15,7 +17,8 @@ import {
 } from 'react-native';
 import { Redirect } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
-import { Bell, Send, Sparkles, UserCircle } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Bell, Camera, CheckCircle, Image as ImageIcon, Send, Sparkles, UserCircle, X } from 'lucide-react-native';
 
 import { Atmosphere } from '@/components/ui/atmosphere';
 import { LoopHeader } from '@/components/ui/loop-header';
@@ -26,11 +29,118 @@ import { FeedPost, useStore } from '@/store/useStore';
 
 const isRemoteImageUrl = (value: string | undefined) => Boolean(value && /^https?:\/\//i.test(value));
 
+const SWIPE_THRESHOLD = 72;
+
+// ─── SwipeableRequestCard ──────────────────────────────────────────────────
+
+type SwipeCardProps = {
+  item: FeedPost;
+  currentUserId: string;
+  theme: ReturnType<typeof getTheme>;
+  onFulfill: () => void;
+  renderBody: () => React.ReactNode;
+};
+
+function SwipeableRequestCard({ item, currentUserId, theme, onFulfill, renderBody }: SwipeCardProps) {
+  const canSwipe = !item.isOffer && item.authorUserId !== currentUserId;
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  // Keep onFulfill ref stable so the closure inside panResponder always calls the latest version
+  const onFulfillRef = useRef(onFulfill);
+  onFulfillRef.current = onFulfill;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        canSwipe && Math.abs(dx) > Math.abs(dy) && dx > 8,
+      onPanResponderMove: (_, { dx }) => {
+        if (dx > 0) translateX.setValue(Math.min(dx, 110));
+      },
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (dx > SWIPE_THRESHOLD || vx > 0.5) {
+          onFulfillRef.current();
+        }
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 120,
+          friction: 9,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  const revealOpacity = translateX.interpolate({
+    inputRange: [0, SWIPE_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <View style={[swipeStyles.wrapper, { borderRadius: radii.md }]}>
+      {canSwipe && (
+        <Animated.View
+          style={[
+            swipeStyles.fulfillReveal,
+            { backgroundColor: theme.accentSoft, opacity: revealOpacity },
+          ]}>
+          <CheckCircle size={20} color={theme.accentDeep} />
+          <Text style={[swipeStyles.fulfillRevealText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>
+            FULFILL
+          </Text>
+        </Animated.View>
+      )}
+      <Animated.View
+        {...(canSwipe ? panResponder.panHandlers : {})}
+        style={{ transform: [{ translateX }] }}>
+        {renderBody()}
+      </Animated.View>
+    </View>
+  );
+}
+
+const swipeStyles = StyleSheet.create({
+  wrapper: {
+    marginBottom: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  fulfillReveal: {
+    alignItems: 'center',
+    bottom: 0,
+    flexDirection: 'row',
+    left: 0,
+    paddingLeft: 20,
+    position: 'absolute',
+    top: 0,
+    width: '100%',
+  },
+  fulfillRevealText: {
+    fontSize: 11,
+    letterSpacing: 1.4,
+    marginLeft: 8,
+    textTransform: 'uppercase',
+  },
+});
+
+// ─── Main Screen ───────────────────────────────────────────────────────────
+
 export default function HallwayScreen() {
   const { feedPosts, addFeedPost, currentUser, claimFeedOffer, hasHydrated, backendError } = useStore();
   const [newPostContent, setNewPostContent] = useState('');
   const [isOffer, setIsOffer] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+
+  // Fulfill modal
+  const [fulfillTarget, setFulfillTarget] = useState<FeedPost | null>(null);
+  const [fulfillImageUri, setFulfillImageUri] = useState<string | null>(null);   // local URI for preview
+  const [fulfillImageBase64, setFulfillImageBase64] = useState<string | null>(null); // base64 for upload
+  const [isFulfilling, setIsFulfilling] = useState(false);
+
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const entranceStyle = useEntranceAnimation(420, 16);
@@ -63,6 +173,61 @@ export default function HallwayScreen() {
     Alert.alert('Claimed', 'This item is now in your active hallway borrows.');
   };
 
+  const pickFulfillImage = async (fromCamera: boolean) => {
+    if (fromCamera) {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Camera permission is required to take a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8, base64: true });
+      if (!result.canceled && result.assets[0]) {
+        setFulfillImageUri(result.assets[0].uri);
+        setFulfillImageBase64(result.assets[0].base64 ?? null);
+      }
+    } else {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setFulfillImageUri(result.assets[0].uri);
+        setFulfillImageBase64(result.assets[0].base64 ?? null);
+      }
+    }
+  };
+
+  const handleFulfillSubmit = async () => {
+    if (!fulfillTarget || !fulfillImageUri) return;
+    setIsFulfilling(true);
+    // Pass as a data URI so the store can decode it without reading the local file
+    const imageUrl = fulfillImageBase64
+      ? `data:image/jpeg;base64,${fulfillImageBase64}`
+      : fulfillImageUri;
+    const result = await addFeedPost({
+      content: `Offering to help with: "${fulfillTarget.content}"`,
+      isOffer: true,
+      imageUrl,
+    });
+    setIsFulfilling(false);
+    if (result) {
+      setFulfillTarget(null);
+      setFulfillImageUri(null);
+      setFulfillImageBase64(null);
+      Alert.alert('Offer Posted!', 'Your offer to help has been posted to the feed.');
+    } else {
+      Alert.alert('Error', backendError ?? 'Unable to post your offer. Please try again.');
+    }
+  };
+
+  const closeFulfillModal = () => {
+    setFulfillTarget(null);
+    setFulfillImageUri(null);
+    setFulfillImageBase64(null);
+  };
+
   const renderOfferStatus = (item: FeedPost) => {
     if (!item.isOffer) return null;
     if (item.offerState === 'returned') {
@@ -88,10 +253,11 @@ export default function HallwayScreen() {
     );
   };
 
-  const renderPost = ({ item }: { item: FeedPost }) => {
+  const renderPostBody = (item: FeedPost) => {
     const isOfferPost = item.isOffer;
+    const isSwipeable = !item.isOffer && item.authorUserId !== currentUser.id;
     return (
-      <View style={[styles.postCard, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, shadowColor: theme.shadow }]}>
+      <View style={[styles.postCard, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, shadowColor: theme.shadow, marginBottom: 0 }]}>
         <View style={styles.postHeader}>
           <View style={[styles.avatarWrap, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}>
             <UserCircle size={24} color={theme.textMuted} />
@@ -125,9 +291,24 @@ export default function HallwayScreen() {
         {isRemoteImageUrl(item.imageUrl) ? <Image source={{ uri: item.imageUrl }} style={styles.postImage} /> : null}
         <Text style={[styles.postContent, { color: theme.textMuted, fontFamily: fonts.body }]}>{item.content}</Text>
         {renderOfferStatus(item)}
+        {isSwipeable && (
+          <Text style={[styles.swipeHint, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+            → swipe right to fulfill
+          </Text>
+        )}
       </View>
     );
   };
+
+  const renderPost = ({ item }: { item: FeedPost }) => (
+    <SwipeableRequestCard
+      item={item}
+      currentUserId={currentUser.id}
+      theme={theme}
+      onFulfill={() => setFulfillTarget(item)}
+      renderBody={() => renderPostBody(item)}
+    />
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -170,6 +351,97 @@ export default function HallwayScreen() {
           }
         />
       </Animated.View>
+
+      {/* ── Fulfill Modal ── */}
+      <Modal
+        visible={fulfillTarget !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={closeFulfillModal}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: theme.surfaceStrong, borderColor: theme.borderStrong }]}>
+
+            {/* Header row */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                Fulfill Request
+              </Text>
+              <TouchableOpacity
+                onPress={closeFulfillModal}
+                style={[styles.modalClose, { backgroundColor: theme.backgroundMuted }]}>
+                <X size={16} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* The request being fulfilled */}
+            <View style={[styles.requestPreview, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}>
+              <Text style={[styles.requestPreviewLabel, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+                REQUEST
+              </Text>
+              <Text style={[styles.requestPreviewContent, { color: theme.text, fontFamily: fonts.body }]}>
+                {fulfillTarget?.content}
+              </Text>
+              <Text style={[styles.requestPreviewAuthor, { color: theme.textMuted, fontFamily: fonts.mono }]}>
+                by {fulfillTarget?.authorName}
+              </Text>
+            </View>
+
+            {/* Photo proof */}
+            <Text style={[styles.modalSectionLabel, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+              PHOTO PROOF
+            </Text>
+
+            {fulfillImageUri ? (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: fulfillImageUri }} style={styles.proofImage} />
+                <TouchableOpacity
+                  style={[styles.rePickBtn, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}
+                  onPress={() => { setFulfillImageUri(null); setFulfillImageBase64(null); }}>
+                  <Text style={[styles.rePickBtnText, { color: theme.textMuted, fontFamily: fonts.mono }]}>
+                    Re-pick
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.pickBtnsRow}>
+                <TouchableOpacity
+                  style={[styles.pickBtn, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}
+                  onPress={() => void pickFulfillImage(true)}>
+                  <Camera size={18} color={theme.accentDeep} />
+                  <Text style={[styles.pickBtnText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>
+                    Camera
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pickBtn, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}
+                  onPress={() => void pickFulfillImage(false)}>
+                  <ImageIcon size={18} color={theme.accentDeep} />
+                  <Text style={[styles.pickBtnText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>
+                    Gallery
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Submit */}
+            <TouchableOpacity
+              style={[
+                styles.fulfillSubmitBtn,
+                {
+                  backgroundColor: fulfillImageUri ? theme.accentDeep : theme.backgroundMuted,
+                  opacity: isFulfilling ? 0.6 : 1,
+                },
+              ]}
+              onPress={() => void handleFulfillSubmit()}
+              disabled={!fulfillImageUri || isFulfilling}>
+              <CheckCircle size={18} color={fulfillImageUri ? theme.text : theme.textMuted} />
+              <Text style={[styles.fulfillSubmitText, { color: fulfillImageUri ? theme.text : theme.textMuted, fontFamily: fonts.mono }]}>
+                {isFulfilling ? 'Posting...' : 'Post Offer to Help'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -301,7 +573,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     elevation: 2,
-    marginBottom: 10,
     padding: 12,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.09,
@@ -368,6 +639,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  swipeHint: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
   inputContainer: {
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
@@ -415,5 +692,116 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 10,
     width: 44,
+  },
+  // ── Modal ──
+  modalOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+  },
+  modalClose: {
+    alignItems: 'center',
+    borderRadius: 20,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  requestPreview: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    marginBottom: 18,
+    padding: 12,
+  },
+  requestPreviewLabel: {
+    fontSize: 9,
+    letterSpacing: 1.4,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  requestPreviewContent: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  requestPreviewAuthor: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  modalSectionLabel: {
+    fontSize: 9,
+    letterSpacing: 1.4,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  pickBtnsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 18,
+  },
+  pickBtn: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  pickBtnText: {
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  imagePreviewWrap: {
+    marginBottom: 18,
+    position: 'relative',
+  },
+  proofImage: {
+    borderRadius: radii.md,
+    height: 180,
+    width: '100%',
+  },
+  rePickBtn: {
+    alignSelf: 'flex-end',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  rePickBtnText: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  fulfillSubmitBtn: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    paddingVertical: 15,
+  },
+  fulfillSubmitText: {
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
 });
