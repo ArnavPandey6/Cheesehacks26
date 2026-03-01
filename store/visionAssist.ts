@@ -31,9 +31,15 @@ type VisionBestGuessLabel = {
   label?: string;
 };
 
+type VisionPageWithMatchingImage = {
+  url?: string;
+  pageTitle?: string;
+};
+
 type VisionWebDetection = {
   webEntities?: VisionWebEntity[];
   bestGuessLabels?: VisionBestGuessLabel[];
+  pagesWithMatchingImages?: VisionPageWithMatchingImage[];
 };
 
 type VisionApiSingleResponse = {
@@ -68,13 +74,23 @@ type ScoredCategory = {
   score: number;
 };
 
+type MarketPriceSummary = {
+  median: number;
+  mean: number;
+  count: number;
+  stdDeviationRatio: number;
+};
+
 export type VisionAssistSuggestion = {
   itemName: string;
   description: string;
   utilityLevel: UtilityLevel;
   conditionLevel: ConditionLevel;
   estimatedPrice: number;
+  estimatedPriceLow: number;
+  estimatedPriceHigh: number;
   confidence: number;
+  priceConfidence: number;
   labels: string[];
   extractedText: string;
 };
@@ -82,187 +98,36 @@ export type VisionAssistSuggestion = {
 export const isVisionConfigured = Boolean(GOOGLE_VISION_API_KEY);
 
 const categoryRules: CategoryRule[] = [
-  {
-    name: 'Laptop',
-    utilityLevel: 'high',
-    estimatedPriceRange: [250, 1200],
-    keywords: ['laptop', 'notebook', 'macbook', 'chromebook', 'computer'],
-  },
-  {
-    name: 'Monitor',
-    utilityLevel: 'high',
-    estimatedPriceRange: [60, 420],
-    keywords: ['monitor', 'display', 'screen'],
-    antiKeywords: ['television', 'tv'],
-  },
-  {
-    name: 'Television',
-    utilityLevel: 'high',
-    estimatedPriceRange: [80, 700],
-    keywords: ['television', 'tv', 'smart tv'],
-  },
-  {
-    name: 'Office Chair',
-    utilityLevel: 'high',
-    estimatedPriceRange: [30, 220],
-    keywords: ['office chair', 'chair', 'seat', 'desk chair'],
-  },
-  {
-    name: 'Desk',
-    utilityLevel: 'high',
-    estimatedPriceRange: [40, 260],
-    keywords: ['desk', 'workstation', 'computer desk', 'table'],
-  },
-  {
-    name: 'Microwave',
-    utilityLevel: 'high',
-    estimatedPriceRange: [25, 170],
-    keywords: ['microwave', 'microwave oven'],
-  },
-  {
-    name: 'Mini Fridge',
-    utilityLevel: 'high',
-    estimatedPriceRange: [60, 320],
-    keywords: ['mini fridge', 'refrigerator', 'fridge'],
-  },
-  {
-    name: 'Vacuum',
-    utilityLevel: 'high',
-    estimatedPriceRange: [40, 380],
-    keywords: ['vacuum', 'vacuum cleaner', 'cleaner'],
-  },
-  {
-    name: 'Tool Set',
-    utilityLevel: 'high',
-    estimatedPriceRange: [15, 280],
-    keywords: ['tool', 'toolbox', 'drill', 'screwdriver', 'wrench', 'hammer'],
-  },
-  {
-    name: 'Printer',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [30, 240],
-    keywords: ['printer', 'scanner', 'inkjet', 'laser printer'],
-  },
-  {
-    name: 'Router',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [20, 180],
-    keywords: ['router', 'modem', 'wifi router'],
-  },
-  {
-    name: 'Keyboard',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [10, 140],
-    keywords: ['keyboard', 'mechanical keyboard'],
-  },
-  {
-    name: 'Mouse',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [8, 90],
-    keywords: ['mouse', 'computer mouse'],
-  },
-  {
-    name: 'Headphones',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [20, 280],
-    keywords: ['headphones', 'headset', 'earbuds'],
-  },
-  {
-    name: 'Speaker',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [20, 300],
-    keywords: ['speaker', 'soundbar', 'subwoofer', 'bluetooth speaker'],
-  },
-  {
-    name: 'Coffee Maker',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [20, 180],
-    keywords: ['coffee maker', 'espresso', 'keurig', 'coffee machine'],
-  },
-  {
-    name: 'Air Fryer',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [25, 160],
-    keywords: ['air fryer'],
-  },
-  {
-    name: 'Blender',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [15, 120],
-    keywords: ['blender'],
-  },
-  {
-    name: 'Toaster',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [10, 60],
-    keywords: ['toaster', 'toaster oven'],
-  },
-  {
-    name: 'Lamp',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [10, 120],
-    keywords: ['lamp', 'light', 'light fixture'],
-  },
-  {
-    name: 'Shelf',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [20, 180],
-    keywords: ['shelf', 'bookcase', 'storage shelf'],
-  },
-  {
-    name: 'Dresser',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [40, 300],
-    keywords: ['dresser', 'drawer', 'cabinet'],
-  },
-  {
-    name: 'Sofa',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [80, 700],
-    keywords: ['sofa', 'couch', 'loveseat'],
-  },
-  {
-    name: 'Mattress',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [60, 500],
-    keywords: ['mattress', 'bed'],
-  },
-  {
-    name: 'Bicycle',
-    utilityLevel: 'medium',
-    estimatedPriceRange: [60, 900],
-    keywords: ['bicycle', 'bike'],
-  },
-  {
-    name: 'Suitcase',
-    utilityLevel: 'low',
-    estimatedPriceRange: [20, 220],
-    keywords: ['suitcase', 'luggage'],
-  },
-  {
-    name: 'Backpack',
-    utilityLevel: 'low',
-    estimatedPriceRange: [8, 120],
-    keywords: ['backpack', 'bag'],
-  },
-  {
-    name: 'Clothing',
-    utilityLevel: 'low',
-    estimatedPriceRange: [5, 80],
-    keywords: ['shirt', 'jacket', 'pants', 'clothing', 'hoodie', 'dress', 'shoes'],
-  },
-  {
-    name: 'Book',
-    utilityLevel: 'low',
-    estimatedPriceRange: [3, 40],
-    keywords: ['book', 'textbook', 'novel'],
-  },
-  {
-    name: 'Decor',
-    utilityLevel: 'low',
-    estimatedPriceRange: [5, 90],
-    keywords: ['decor', 'vase', 'frame', 'ornament', 'art'],
-  },
+  { name: 'Laptop', utilityLevel: 'high', estimatedPriceRange: [250, 1300], keywords: ['laptop', 'notebook', 'macbook', 'chromebook', 'computer'] },
+  { name: 'Monitor', utilityLevel: 'high', estimatedPriceRange: [60, 420], keywords: ['monitor', 'display', 'screen'], antiKeywords: ['television', 'tv'] },
+  { name: 'Television', utilityLevel: 'high', estimatedPriceRange: [90, 800], keywords: ['television', 'tv', 'smart tv'] },
+  { name: 'Office Chair', utilityLevel: 'high', estimatedPriceRange: [30, 250], keywords: ['office chair', 'desk chair', 'chair', 'seat'] },
+  { name: 'Desk', utilityLevel: 'high', estimatedPriceRange: [40, 280], keywords: ['desk', 'computer desk', 'workstation', 'table'] },
+  { name: 'Microwave', utilityLevel: 'high', estimatedPriceRange: [25, 180], keywords: ['microwave', 'microwave oven'] },
+  { name: 'Mini Fridge', utilityLevel: 'high', estimatedPriceRange: [60, 340], keywords: ['mini fridge', 'refrigerator', 'fridge'] },
+  { name: 'Vacuum', utilityLevel: 'high', estimatedPriceRange: [40, 420], keywords: ['vacuum', 'vacuum cleaner', 'cleaner'] },
+  { name: 'Tool Set', utilityLevel: 'high', estimatedPriceRange: [15, 320], keywords: ['tool', 'toolbox', 'drill', 'screwdriver', 'wrench', 'hammer'] },
+  { name: 'Printer', utilityLevel: 'medium', estimatedPriceRange: [30, 260], keywords: ['printer', 'scanner', 'inkjet', 'laser printer'] },
+  { name: 'Router', utilityLevel: 'medium', estimatedPriceRange: [20, 180], keywords: ['router', 'modem', 'wifi router'] },
+  { name: 'Keyboard', utilityLevel: 'medium', estimatedPriceRange: [10, 140], keywords: ['keyboard', 'mechanical keyboard'] },
+  { name: 'Mouse', utilityLevel: 'medium', estimatedPriceRange: [8, 90], keywords: ['mouse', 'computer mouse'] },
+  { name: 'Headphones', utilityLevel: 'medium', estimatedPriceRange: [20, 320], keywords: ['headphones', 'headset', 'earbuds'] },
+  { name: 'Speaker', utilityLevel: 'medium', estimatedPriceRange: [20, 320], keywords: ['speaker', 'soundbar', 'subwoofer', 'bluetooth speaker'] },
+  { name: 'Coffee Maker', utilityLevel: 'medium', estimatedPriceRange: [20, 180], keywords: ['coffee maker', 'espresso', 'keurig', 'coffee machine'] },
+  { name: 'Air Fryer', utilityLevel: 'medium', estimatedPriceRange: [25, 180], keywords: ['air fryer'] },
+  { name: 'Blender', utilityLevel: 'medium', estimatedPriceRange: [15, 130], keywords: ['blender'] },
+  { name: 'Toaster', utilityLevel: 'medium', estimatedPriceRange: [10, 70], keywords: ['toaster', 'toaster oven'] },
+  { name: 'Lamp', utilityLevel: 'medium', estimatedPriceRange: [10, 120], keywords: ['lamp', 'light fixture', 'light'] },
+  { name: 'Shelf', utilityLevel: 'medium', estimatedPriceRange: [20, 200], keywords: ['shelf', 'bookcase', 'storage shelf'] },
+  { name: 'Dresser', utilityLevel: 'medium', estimatedPriceRange: [40, 320], keywords: ['dresser', 'drawer', 'cabinet'] },
+  { name: 'Sofa', utilityLevel: 'medium', estimatedPriceRange: [80, 900], keywords: ['sofa', 'couch', 'loveseat'] },
+  { name: 'Mattress', utilityLevel: 'medium', estimatedPriceRange: [60, 500], keywords: ['mattress', 'bed'] },
+  { name: 'Bicycle', utilityLevel: 'medium', estimatedPriceRange: [60, 1000], keywords: ['bicycle', 'bike'] },
+  { name: 'Suitcase', utilityLevel: 'low', estimatedPriceRange: [20, 220], keywords: ['suitcase', 'luggage'] },
+  { name: 'Backpack', utilityLevel: 'low', estimatedPriceRange: [8, 120], keywords: ['backpack', 'bag'] },
+  { name: 'Clothing', utilityLevel: 'low', estimatedPriceRange: [5, 90], keywords: ['shirt', 'jacket', 'pants', 'clothing', 'hoodie', 'dress', 'shoes'] },
+  { name: 'Book', utilityLevel: 'low', estimatedPriceRange: [3, 40], keywords: ['book', 'textbook', 'novel'] },
+  { name: 'Decor', utilityLevel: 'low', estimatedPriceRange: [5, 90], keywords: ['decor', 'vase', 'frame', 'ornament', 'art'] },
 ];
 
 const newConditionKeywords = ['brand new', 'new in box', 'sealed', 'unused', 'mint', 'unopened'];
@@ -271,7 +136,7 @@ const goodConditionKeywords = ['good condition', 'working', 'works', 'clean', 'g
 
 const conditionPriceMultiplier: Record<ConditionLevel, number> = {
   new: 1.18,
-  good: 1.0,
+  good: 1,
   worn: 0.62,
 };
 
@@ -336,12 +201,10 @@ const pushWeightedToken = (
   const text = normalizeText(rawText);
   if (!text) return;
 
-  const weight = clamp(rawWeight, 0.05, 2.2);
+  const weight = clamp(rawWeight, 0.05, 2.5);
   const existing = map[text];
   if (existing) {
-    if (weight > existing.weight) {
-      map[text] = { text, weight, source };
-    }
+    if (weight > existing.weight) map[text] = { text, weight, source };
     return;
   }
 
@@ -393,8 +256,24 @@ const parsePriceCandidatesFromText = (rawText: string) => {
     match = usdRegex.exec(text);
   }
 
-  const deduped = [...new Set(values.map((value) => Math.round(value * 100) / 100))];
-  return deduped.sort((a, b) => a - b);
+  return [...new Set(values.map((value) => Math.round(value * 100) / 100))];
+};
+
+const parsePriceCandidatesFromPageTitles = (pages: VisionPageWithMatchingImage[]) => {
+  const titles = pages.map((page) => page.pageTitle ?? '').filter(Boolean).join('\n');
+  return parsePriceCandidatesFromText(titles);
+};
+
+const extractModelTokens = (rawText: string) => {
+  const modelRegex = /\b([A-Z]{1,4}[-]?\d{2,6}[A-Z0-9-]{0,6})\b/g;
+  const models: string[] = [];
+  let match: RegExpExecArray | null = modelRegex.exec(rawText);
+  while (match) {
+    const token = (match[1] ?? '').trim();
+    if (token.length >= 4) models.push(token);
+    match = modelRegex.exec(rawText);
+  }
+  return [...new Set(models)];
 };
 
 const includesKeyword = (haystack: string, keyword: string) => {
@@ -413,16 +292,13 @@ const scoreCategories = (tokens: WeightedToken[], ocrText: string) => {
     for (const token of tokens) {
       for (const keyword of rule.keywords) {
         if (!includesKeyword(token.text, keyword)) continue;
-
         const exactBoost = token.text === keyword ? 1.25 : 1;
         score += token.weight * exactBoost;
       }
     }
 
     for (const keyword of rule.keywords) {
-      if (ocrNormalized.includes(keyword)) {
-        score += 1.15;
-      }
+      if (ocrNormalized.includes(keyword)) score += 1.15;
     }
 
     if (rule.antiKeywords) {
@@ -466,16 +342,13 @@ const detectBrand = (tokens: WeightedToken[], ocrText: string) => {
   const ocrNormalized = normalizeText(ocrText);
 
   for (const brand of knownBrands) {
-    if (ocrNormalized.includes(brand)) {
-      brandScores[brand] = (brandScores[brand] ?? 0) + 0.9;
-    }
+    if (ocrNormalized.includes(brand)) brandScores[brand] = (brandScores[brand] ?? 0) + 0.9;
   }
 
   for (const token of tokens) {
     for (const brand of knownBrands) {
       if (!token.text.includes(brand)) continue;
-
-      const sourceBoost = token.source === 'logo' ? 1.7 : token.source === 'web' ? 1.2 : 1;
+      const sourceBoost = token.source === 'logo' ? 1.8 : token.source === 'web' ? 1.25 : 1;
       brandScores[brand] = (brandScores[brand] ?? 0) + token.weight * sourceBoost;
     }
   }
@@ -493,50 +366,107 @@ const detectBrand = (tokens: WeightedToken[], ocrText: string) => {
   return titleCase(bestBrand);
 };
 
+const summarizeMarketPrices = (values: number[]): MarketPriceSummary | null => {
+  if (values.length === 0) return null;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = sorted.length % 2 === 1
+    ? sorted[Math.floor(sorted.length / 2)]
+    : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+
+  const trimStart = sorted.length >= 5 ? 1 : 0;
+  const trimEnd = sorted.length >= 5 ? sorted.length - 1 : sorted.length;
+  const trimmed = sorted.slice(trimStart, trimEnd);
+  const mean = trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length;
+
+  const variance = trimmed.reduce((sum, value) => sum + (value - mean) ** 2, 0) / trimmed.length;
+  const stdDeviation = Math.sqrt(variance);
+  const stdDeviationRatio = mean > 0 ? stdDeviation / mean : 1;
+
+  return {
+    median,
+    mean,
+    count: sorted.length,
+    stdDeviationRatio,
+  };
+};
+
 const estimatePrice = (input: {
   bestCategory: CategoryRule | null;
   categoryConfidence: number;
   conditionLevel: ConditionLevel;
   brandName: string | null;
   explicitPriceCandidates: number[];
+  pageTitlePriceCandidates: number[];
+  modelEvidenceScore: number;
 }) => {
   const range = input.bestCategory?.estimatedPriceRange ?? [15, 120];
   const [minRange, maxRange] = range;
+  const rangeSpan = maxRange - minRange;
 
   const modeledBase =
-    minRange
-    + (maxRange - minRange) * clamp(0.55 + input.categoryConfidence * 0.25, 0.35, 0.9);
+    minRange + rangeSpan * clamp(0.52 + input.categoryConfidence * 0.28, 0.33, 0.9);
   const conditionMultiplier = conditionPriceMultiplier[input.conditionLevel];
   const brandMultiplier = input.brandName
     ? (brandMultipliers[normalizeText(input.brandName)] ?? 1)
     : 1;
+  const modeledPrice = modeledBase * conditionMultiplier * brandMultiplier;
 
   const lowerBound = minRange * 0.35;
-  const upperBound = maxRange * 1.55;
-  let modeledPrice = clamp(modeledBase * conditionMultiplier * brandMultiplier, lowerBound, upperBound);
+  const upperBound = maxRange * 1.7;
 
-  if (input.explicitPriceCandidates.length > 0) {
-    const plausible = input.explicitPriceCandidates.filter(
-      (price) => price >= lowerBound * 0.6 && price <= upperBound * 1.4
+  const mergedMarketCandidates = [
+    ...input.explicitPriceCandidates,
+    ...input.pageTitlePriceCandidates,
+  ];
+  const marketSummary = summarizeMarketPrices(mergedMarketCandidates);
+
+  let blendedPrice = modeledPrice;
+  let priceConfidence = clamp(0.28 + input.categoryConfidence * 0.34, 0.2, 0.7);
+
+  if (marketSummary) {
+    const marketWeightBase = marketSummary.count >= 5
+      ? 0.82
+      : marketSummary.count === 4
+        ? 0.76
+        : marketSummary.count === 3
+          ? 0.68
+          : marketSummary.count === 2
+            ? 0.58
+            : 0.46;
+
+    const modelBoost = clamp(input.modelEvidenceScore * 0.08, 0, 0.16);
+    const consistencyBoost = clamp((0.3 - marketSummary.stdDeviationRatio) * 0.4, 0, 0.12);
+    const marketWeight = clamp(marketWeightBase + modelBoost + consistencyBoost, 0.4, 0.9);
+
+    blendedPrice = marketSummary.median * marketWeight + modeledPrice * (1 - marketWeight);
+    priceConfidence = clamp(
+      0.42
+      + input.categoryConfidence * 0.25
+      + marketWeight * 0.2
+      + clamp((0.32 - marketSummary.stdDeviationRatio) * 0.25, 0, 0.16),
+      0.3,
+      0.95
     );
-    const pool = plausible.length > 0 ? plausible : input.explicitPriceCandidates;
-    const closestExplicit = pool.reduce((closest, candidate) =>
-      Math.abs(candidate - modeledPrice) < Math.abs(closest - modeledPrice) ? candidate : closest,
-    pool[0]);
-
-    const explicitTrust = input.categoryConfidence >= 0.65
-      ? 0.68
-      : input.categoryConfidence >= 0.45
-        ? 0.58
-        : 0.46;
-
-    modeledPrice = closestExplicit * explicitTrust + modeledPrice * (1 - explicitTrust);
-  } else if (input.categoryConfidence < 0.35) {
-    const conservative = minRange + (maxRange - minRange) * 0.38;
-    modeledPrice = conservative * conditionMultiplier * brandMultiplier;
+  } else if (input.modelEvidenceScore > 0) {
+    priceConfidence = clamp(priceConfidence + 0.08, 0.2, 0.78);
   }
 
-  return Math.round(clamp(modeledPrice, 5, 5000));
+  const finalPrice = Math.round(clamp(blendedPrice, lowerBound, upperBound));
+
+  const rangePct = marketSummary
+    ? clamp(0.32 - priceConfidence * 0.2, 0.1, 0.28)
+    : clamp(0.4 - priceConfidence * 0.18, 0.16, 0.36);
+
+  const estimatedPriceLow = Math.max(5, Math.round(finalPrice * (1 - rangePct)));
+  const estimatedPriceHigh = Math.round(finalPrice * (1 + rangePct));
+
+  return {
+    estimatedPrice: finalPrice,
+    estimatedPriceLow,
+    estimatedPriceHigh,
+    priceConfidence,
+  };
 };
 
 const inferFallbackName = (labels: string[]) => {
@@ -548,43 +478,19 @@ const buildSuggestion = (response: VisionApiSingleResponse): VisionAssistSuggest
   const tokenMap: Record<string, WeightedToken> = {};
 
   for (const object of response.localizedObjectAnnotations ?? []) {
-    pushWeightedToken(
-      tokenMap,
-      object.name ?? '',
-      clamp((object.score ?? 0.45) * 1.35, 0.1, 2),
-      'object'
-    );
+    pushWeightedToken(tokenMap, object.name ?? '', clamp((object.score ?? 0.45) * 1.38, 0.1, 2.2), 'object');
   }
-
   for (const label of response.labelAnnotations ?? []) {
-    pushWeightedToken(
-      tokenMap,
-      label.description ?? '',
-      clamp(label.score ?? 0.4, 0.1, 1.5),
-      'label'
-    );
+    pushWeightedToken(tokenMap, label.description ?? '', clamp(label.score ?? 0.4, 0.1, 1.6), 'label');
   }
-
   for (const entity of response.webDetection?.webEntities ?? []) {
-    pushWeightedToken(
-      tokenMap,
-      entity.description ?? '',
-      clamp((entity.score ?? 0.35) * 1.25, 0.08, 1.7),
-      'web'
-    );
+    pushWeightedToken(tokenMap, entity.description ?? '', clamp((entity.score ?? 0.35) * 1.28, 0.08, 1.8), 'web');
   }
-
   for (const guess of response.webDetection?.bestGuessLabels ?? []) {
     pushWeightedToken(tokenMap, guess.label ?? '', 1.1, 'guess');
   }
-
   for (const logo of response.logoAnnotations ?? []) {
-    pushWeightedToken(
-      tokenMap,
-      logo.description ?? '',
-      clamp((logo.score ?? 0.6) * 1.6, 0.15, 2.2),
-      'logo'
-    );
+    pushWeightedToken(tokenMap, logo.description ?? '', clamp((logo.score ?? 0.6) * 1.75, 0.15, 2.4), 'logo');
   }
 
   const extractedText = (response.textAnnotations?.[0]?.description ?? '').trim();
@@ -603,9 +509,10 @@ const buildSuggestion = (response: VisionApiSingleResponse): VisionAssistSuggest
   const scoreGap = topScore > 0 ? clamp((topScore - secondScore) / topScore, 0, 1) : 0;
   const strongSignalCount = allTokens.filter((token) => token.weight >= 0.75).length;
   const signalStrength = clamp(strongSignalCount / 8, 0, 1);
-  const categoryConfidence = clamp(topScore / 6.2, 0, 1);
+  const categoryConfidence = clamp(topScore / 6.4, 0, 1);
+
   const confidence = clamp(
-    categoryConfidence * 0.55 + scoreGap * 0.25 + signalStrength * 0.2,
+    categoryConfidence * 0.56 + scoreGap * 0.24 + signalStrength * 0.2,
     0.2,
     0.99
   );
@@ -616,16 +523,33 @@ const buildSuggestion = (response: VisionApiSingleResponse): VisionAssistSuggest
     .slice(0, 6)
     .map((token) => token.text);
 
-  const conditionLevel = inferCondition(`${extractedText} ${nonOcrLabels.join(' ')}`);
+  const combinedText = `${extractedText} ${nonOcrLabels.join(' ')}`;
+  const conditionLevel = inferCondition(combinedText);
   const brandName = detectBrand(allTokens, extractedText);
-  const explicitPriceCandidates = parsePriceCandidatesFromText(extractedText);
 
-  const estimatedPrice = estimatePrice({
+  const explicitPriceCandidates = parsePriceCandidatesFromText(extractedText);
+  const pageTitlePriceCandidates = parsePriceCandidatesFromPageTitles(response.webDetection?.pagesWithMatchingImages ?? []);
+
+  const modelTokens = extractModelTokens(extractedText);
+  const modelEvidenceScore = modelTokens.reduce((score, token) => {
+    const tokenLower = token.toLowerCase();
+    const webHasToken = (response.webDetection?.webEntities ?? []).some((entity) =>
+      normalizeText(entity.description ?? '').includes(tokenLower)
+    );
+    const pagesHaveToken = (response.webDetection?.pagesWithMatchingImages ?? []).some((page) =>
+      normalizeText(page.pageTitle ?? '').includes(tokenLower)
+    );
+    return score + (webHasToken || pagesHaveToken ? 1 : 0.4);
+  }, 0);
+
+  const priceEstimation = estimatePrice({
     bestCategory: bestCategory?.rule ?? null,
     categoryConfidence: confidence,
     conditionLevel,
     brandName,
     explicitPriceCandidates,
+    pageTitlePriceCandidates,
+    modelEvidenceScore,
   });
 
   const baseItemName = bestCategory?.rule.name ?? inferFallbackName(nonOcrLabels);
@@ -635,23 +559,20 @@ const buildSuggestion = (response: VisionApiSingleResponse): VisionAssistSuggest
 
   const utilityLevel = bestCategory?.rule.utilityLevel ?? 'medium';
   const descriptionParts: string[] = [];
-  if (nonOcrLabels.length > 0) {
-    descriptionParts.push(`Detected: ${nonOcrLabels.slice(0, 4).join(', ')}`);
-  }
-  if (brandName) {
-    descriptionParts.push(`Brand hint: ${brandName}`);
-  }
-  if (extractedText) {
-    descriptionParts.push(`OCR: ${extractedText.split('\n').slice(0, 2).join(' ')}`);
-  }
+  if (nonOcrLabels.length > 0) descriptionParts.push(`Detected: ${nonOcrLabels.slice(0, 4).join(', ')}`);
+  if (brandName) descriptionParts.push(`Brand hint: ${brandName}`);
+  if (extractedText) descriptionParts.push(`OCR: ${extractedText.split('\n').slice(0, 2).join(' ')}`);
 
   return {
     itemName,
     description: descriptionParts.join('. ').trim(),
     utilityLevel,
     conditionLevel,
-    estimatedPrice,
+    estimatedPrice: priceEstimation.estimatedPrice,
+    estimatedPriceLow: priceEstimation.estimatedPriceLow,
+    estimatedPriceHigh: priceEstimation.estimatedPriceHigh,
     confidence,
+    priceConfidence: priceEstimation.priceConfidence,
     labels: nonOcrLabels.slice(0, 5),
     extractedText,
   };
@@ -679,7 +600,7 @@ export const analyzeImageWithGoogleVision = async (imageBase64: string): Promise
           features: [
             { type: 'OBJECT_LOCALIZATION', maxResults: 12 },
             { type: 'LABEL_DETECTION', maxResults: 16 },
-            { type: 'TEXT_DETECTION', maxResults: 10 },
+            { type: 'TEXT_DETECTION', maxResults: 12 },
             { type: 'WEB_DETECTION', maxResults: 10 },
             { type: 'LOGO_DETECTION', maxResults: 5 },
           ],

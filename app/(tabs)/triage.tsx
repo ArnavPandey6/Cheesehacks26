@@ -56,6 +56,7 @@ export default function TriageScreen() {
   const [calculatedKarma, setCalculatedKarma] = useState(0);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [isVisionAnalyzing, setIsVisionAnalyzing] = useState(false);
+  const [visionPriceHint, setVisionPriceHint] = useState<string | null>(null);
   const normalizedEstimatedPrice = Number.parseFloat(estimatedPriceInput.replace(/[^0-9.]/g, ''));
   const hasValidEstimatedPrice = Number.isFinite(normalizedEstimatedPrice) && normalizedEstimatedPrice > 0;
 
@@ -134,9 +135,10 @@ export default function TriageScreen() {
       Alert.alert(
         'AI Suggestions Ready',
         confidencePct >= 55
-          ? `Detected ${suggestion.itemName} (${confidencePct}% confidence). Fields updated, review before posting.`
-          : `Detected ${suggestion.itemName} (${confidencePct}% confidence). Suggestion is low-confidence, so review and adjust manually.`
+          ? `Detected ${suggestion.itemName} (${confidencePct}% confidence).\nPrice range: $${suggestion.estimatedPriceLow}-$${suggestion.estimatedPriceHigh} (${Math.round(suggestion.priceConfidence * 100)}% price confidence).`
+          : `Detected ${suggestion.itemName} (${confidencePct}% confidence).\nPrice range: $${suggestion.estimatedPriceLow}-$${suggestion.estimatedPriceHigh}. Low-confidence estimate, please review manually.`
       );
+      setVisionPriceHint(`AI range: $${suggestion.estimatedPriceLow}-$${suggestion.estimatedPriceHigh} (${Math.round(suggestion.priceConfidence * 100)}% confidence)`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to analyze image with Google Vision.';
       Alert.alert('Vision Analysis Failed', message);
@@ -173,6 +175,7 @@ export default function TriageScreen() {
     setImageUri(null);
     setImageBase64(null);
     setCalculatedKarma(0);
+    setVisionPriceHint(null);
     setStep('INPUT');
   };
 
@@ -371,6 +374,11 @@ export default function TriageScreen() {
                   <Text style={[styles.hintText, { color: theme.textSoft, fontFamily: fonts.body }]}>
                     Used for karma scoring only.
                   </Text>
+                  {visionPriceHint ? (
+                    <Text style={[styles.hintText, { color: theme.accentDeep, fontFamily: fonts.body }]}>
+                      {visionPriceHint}
+                    </Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.formGroup}>
