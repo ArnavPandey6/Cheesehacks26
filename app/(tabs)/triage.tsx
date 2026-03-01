@@ -22,7 +22,8 @@ import { LoopHeader } from '@/components/ui/loop-header';
 import { fonts, getTheme, radii } from '@/components/ui/theme';
 import { useEntranceAnimation } from '@/components/ui/use-entrance-animation';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { deriveBorrowRequirement, evaluateKarmaValue } from '@/store/karmaEvaluator';
+import { computeDonationKarma, ConditionLevel, UtilityLevel } from '@/store/karma';
+import { deriveBorrowRequirement } from '@/store/karmaEvaluator';
 import { useStore, VaultItem } from '@/store/useStore';
 
 export default function TriageScreen() {
@@ -34,7 +35,11 @@ export default function TriageScreen() {
   const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
   const [itemName, setItemName] = useState('');
   const [itemDesc, setItemDesc] = useState('');
+  const [estimatedPrice, setEstimatedPrice] = useState('');
+  const [utility, setUtility] = useState<UtilityLevel>('medium');
+  const [condition, setCondition] = useState<ConditionLevel>('good');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageDataUri, setImageDataUri] = useState<string | null>(null);
   const [calculatedKarma, setCalculatedKarma] = useState(0);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
@@ -47,10 +52,13 @@ export default function TriageScreen() {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.6,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
+      const b64 = result.assets[0].base64;
+      setImageDataUri(b64 ? `data:image/jpeg;base64,${b64}` : result.assets[0].uri);
     }
   };
 
@@ -65,22 +73,27 @@ export default function TriageScreen() {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.6,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
+      const b64 = result.assets[0].base64;
+      setImageDataUri(b64 ? `data:image/jpeg;base64,${b64}` : result.assets[0].uri);
     }
   };
 
   const handleEvaluate = () => {
-    if (!itemName.trim() || !imageUri) {
-      Alert.alert('Missing Info', 'Please provide a name and add a photo before evaluating.');
+    const price = parseFloat(estimatedPrice);
+    if (!itemName.trim() || !imageUri || isNaN(price) || price <= 0) {
+      Alert.alert('Missing Info', 'Please provide a name, photo, and estimated value before evaluating.');
       return;
     }
-    const evaluatedKarma = evaluateKarmaValue({
-      itemName,
-      itemDescription: itemDesc,
-      hasPhoto: Boolean(imageUri),
+    const evaluatedKarma = computeDonationKarma({
+      estimatedPrice: price,
+      utility,
+      condition,
+      isTriageMode: true,
     });
     setCalculatedKarma(evaluatedKarma);
     setStep('EVALUATED');
@@ -89,17 +102,22 @@ export default function TriageScreen() {
   const resetFlow = () => {
     setItemName('');
     setItemDesc('');
+    setEstimatedPrice('');
+    setUtility('medium');
+    setCondition('good');
     setImageUri(null);
+    setImageDataUri(null);
     setCalculatedKarma(0);
     setStep('INPUT');
   };
 
   const handleDonateToLibrary = async () => {
+    const uploadUri = imageDataUri ?? imageUri!;
     const newItem: VaultItem = {
       id: `item_${Date.now()}`,
       name: itemName,
       description: itemDesc || 'A community donated item.',
-      imageUrl: imageUri!,
+      imageUrl: uploadUri,
       status: 'available',
       minKarmaRequired: deriveBorrowRequirement(calculatedKarma),
     };
@@ -124,6 +142,7 @@ export default function TriageScreen() {
   };
 
   const handleGiveToNeighbor = async () => {
+    const uploadUri = imageDataUri ?? imageUri!;
     const partialKarma = Math.floor(calculatedKarma / 2);
     setIsSubmittingAction(true);
     const post = await addFeedPost({
@@ -131,7 +150,7 @@ export default function TriageScreen() {
         ? `Offering ${itemName}: ${itemDesc}`
         : `Offering ${itemName}. Message me if you want to claim it.`,
       isOffer: true,
-      imageUrl: imageUri ?? undefined,
+      imageUrl: uploadUri,
     });
     if (!post) {
       Alert.alert('Unable to Post Offer', backendError ?? 'Please try again.');
@@ -150,6 +169,20 @@ export default function TriageScreen() {
     setIsSubmittingAction(false);
     Alert.alert('Relayed!', `Item posted to Hallway as an offer. You earned +${partialKarma} Karma.`, [{ text: 'OK', onPress: resetFlow }]);
   };
+
+  const utilityOptions: { label: string; value: UtilityLevel }[] = [
+    { label: 'High', value: 'high' },
+    { label: 'Med', value: 'medium' },
+    { label: 'Low', value: 'low' },
+  ];
+
+  const conditionOptions: { label: string; value: ConditionLevel }[] = [
+    { label: 'New', value: 'new' },
+    { label: 'Good', value: 'good' },
+    { label: 'Worn', value: 'worn' },
+  ];
+
+  const canEvaluate = Boolean(itemName.trim()) && Boolean(imageUri) && Boolean(estimatedPrice) && parseFloat(estimatedPrice) > 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -210,15 +243,7 @@ export default function TriageScreen() {
                 <View style={styles.formGroup}>
                   <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Item Name</Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: theme.surfaceStrong,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        fontFamily: fonts.body,
-                      },
-                    ]}
+                    style={[styles.input, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, color: theme.text, fontFamily: fonts.body }]}
                     placeholder="e.g. IKEA floor lamp"
                     placeholderTextColor={theme.textSoft}
                     value={itemName}
@@ -227,19 +252,72 @@ export default function TriageScreen() {
                 </View>
 
                 <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Estimated Value ($)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, color: theme.text, fontFamily: fonts.body }]}
+                    placeholder="e.g. 40"
+                    placeholderTextColor={theme.textSoft}
+                    value={estimatedPrice}
+                    onChangeText={setEstimatedPrice}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Utility</Text>
+                  <View style={styles.segmentRow}>
+                    {utilityOptions.map((opt) => {
+                      const active = utility === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.segmentBtn,
+                            {
+                              backgroundColor: active ? theme.accentDeep : theme.surfaceStrong,
+                              borderColor: active ? theme.accentDeep : theme.border,
+                            },
+                          ]}
+                          onPress={() => setUtility(opt.value)}>
+                          <Text style={[styles.segmentText, { color: active ? theme.text : theme.textMuted, fontFamily: fonts.mono }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Condition</Text>
+                  <View style={styles.segmentRow}>
+                    {conditionOptions.map((opt) => {
+                      const active = condition === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          style={[
+                            styles.segmentBtn,
+                            {
+                              backgroundColor: active ? theme.accentDeep : theme.surfaceStrong,
+                              borderColor: active ? theme.accentDeep : theme.border,
+                            },
+                          ]}
+                          onPress={() => setCondition(opt.value)}>
+                          <Text style={[styles.segmentText, { color: active ? theme.text : theme.textMuted, fontFamily: fonts.mono }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
                   <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Description (Optional)</Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      styles.textArea,
-                      {
-                        backgroundColor: theme.surfaceStrong,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        fontFamily: fonts.body,
-                      },
-                    ]}
-                    placeholder="Condition, details, etc."
+                    style={[styles.input, styles.textArea, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, color: theme.text, fontFamily: fonts.body }]}
+                    placeholder="Extra details, included accessories, etc."
                     placeholderTextColor={theme.textSoft}
                     value={itemDesc}
                     onChangeText={setItemDesc}
@@ -249,10 +327,7 @@ export default function TriageScreen() {
                 </View>
 
                 <TouchableOpacity
-                  style={[
-                    styles.evaluateBtn,
-                    { backgroundColor: !itemName.trim() || !imageUri ? theme.borderStrong : theme.accentDeep },
-                  ]}
+                  style={[styles.evaluateBtn, { backgroundColor: canEvaluate ? theme.accentDeep : theme.borderStrong }]}
                   onPress={handleEvaluate}>
                   <Sparkles size={18} color={theme.text} />
                   <Text style={[styles.evaluateBtnText, { color: theme.text, fontFamily: fonts.mono }]}>
@@ -262,13 +337,15 @@ export default function TriageScreen() {
               </View>
             ) : (
               <View>
-                <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>AI Detected</Text>
+                <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>Karma Estimate</Text>
                 <View style={[styles.detectedRow, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
                   <View style={[styles.detectedImageWrap, { backgroundColor: theme.accentSoft }]}>
                     <Image source={{ uri: imageUri! }} style={styles.previewImage} />
                   </View>
                   <View style={styles.detectedBody}>
-                    <Text style={[styles.detectedTag, { color: theme.accentDeep, fontFamily: fonts.mono }]}>AI identified</Text>
+                    <Text style={[styles.detectedTag, { color: theme.accentDeep, fontFamily: fonts.mono }]}>
+                      {condition} · {utility} utility · ×2 triage
+                    </Text>
                     <Text style={[styles.detectedName, { color: theme.text, fontFamily: fonts.body }]}>{itemName}</Text>
                     {itemDesc ? <Text style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
                     <View style={styles.karmaRow}>
@@ -280,14 +357,7 @@ export default function TriageScreen() {
 
                 <View style={styles.relayPair}>
                   <TouchableOpacity
-                    style={[
-                      styles.relayBtn,
-                      {
-                        backgroundColor: theme.surfaceStrong,
-                        borderColor: theme.border,
-                        opacity: isSubmittingAction ? 0.7 : 1,
-                      },
-                    ]}
+                    style={[styles.relayBtn, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, opacity: isSubmittingAction ? 0.7 : 1 }]}
                     onPress={() => void handleGiveToNeighbor()}
                     disabled={isSubmittingAction}>
                     <Users size={19} color={theme.text} />
@@ -296,14 +366,7 @@ export default function TriageScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[
-                      styles.relayBtn,
-                      {
-                        backgroundColor: theme.accentSoft,
-                        borderColor: theme.accent,
-                        opacity: isSubmittingAction ? 0.7 : 1,
-                      },
-                    ]}
+                    style={[styles.relayBtn, { backgroundColor: theme.accentSoft, borderColor: theme.accent, opacity: isSubmittingAction ? 0.7 : 1 }]}
                     onPress={() => void handleDonateToLibrary()}
                     disabled={isSubmittingAction}>
                     <Building size={19} color={theme.accentDeep} />
@@ -417,6 +480,22 @@ const styles = StyleSheet.create({
   textArea: {
     height: 98,
     textAlignVertical: 'top',
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  segmentBtn: {
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  segmentText: {
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   evaluateBtn: {
     alignItems: 'center',
