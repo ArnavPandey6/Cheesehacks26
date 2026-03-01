@@ -21,6 +21,7 @@ export type VaultItem = {
     imageUrl: string;
     status: 'available' | 'reserved' | 'on-loan';
     minKarmaRequired: number;
+    productCategory: string;
     reservedByUserId?: string | null;
     estimatedPrice?: number;
     utilityLevel?: UtilityLevel;
@@ -109,6 +110,7 @@ type RawVaultItemRow = {
     image_url: string;
     status: 'available' | 'reserved' | 'on-loan';
     min_karma_required: number;
+    product_category: string | null;
     reserved_by_user_id: string | null;
     estimated_price: number | null;
     utility_level: string | null;
@@ -216,6 +218,15 @@ const isUtilityLevel = (value: string | null | undefined): value is UtilityLevel
 const isConditionLevel = (value: string | null | undefined): value is ConditionLevel =>
     value === 'new' || value === 'good' || value === 'worn';
 
+const normalizeProductCategory = (value: string | null | undefined) => {
+    const cleaned = value?.trim().replace(/\s+/g, ' ') ?? '';
+    if (!cleaned) return 'Uncategorized';
+    return cleaned
+        .split(' ')
+        .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+        .join(' ');
+};
+
 const mapVaultRow = (row: RawVaultItemRow): VaultItem => ({
     id: row.id,
     name: row.name,
@@ -223,6 +234,7 @@ const mapVaultRow = (row: RawVaultItemRow): VaultItem => ({
     imageUrl: normalizeImageUrl(row.image_url) ?? row.image_url,
     status: row.status,
     minKarmaRequired: row.min_karma_required,
+    productCategory: normalizeProductCategory(row.product_category),
     reservedByUserId: row.reserved_by_user_id,
     estimatedPrice: row.estimated_price ?? 0,
     utilityLevel: isUtilityLevel(row.utility_level) ? row.utility_level : 'medium',
@@ -473,7 +485,7 @@ const loadAllDataFromSupabase = async (sessionUserId: string | null) => {
             .order('created_at', { ascending: true }),
         supabase
             .from('vault_items')
-            .select('id,name,description,image_url,status,min_karma_required,reserved_by_user_id,estimated_price,utility_level,condition_level,successful_borrows,due_date,created_at')
+            .select('id,name,description,image_url,status,min_karma_required,product_category,reserved_by_user_id,estimated_price,utility_level,condition_level,successful_borrows,due_date,created_at')
             .order('created_at', { ascending: false }),
         supabase
             .from('feed_posts')
@@ -1076,6 +1088,8 @@ export const useStore = create<AppState>((set, get) => ({
         if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
         const currentUser = get().currentUser;
         if (!currentUser) return { ok: false, reason: 'Please sign in first.' };
+        const productCategory = item.productCategory?.trim().replace(/\s+/g, ' ') ?? '';
+        if (!productCategory) return { ok: false, reason: 'Product category is required.' };
 
         let uploadedImageUrl: string;
         try {
@@ -1101,6 +1115,7 @@ export const useStore = create<AppState>((set, get) => ({
                 image_url: uploadedImageUrl,
                 status: 'available',
                 min_karma_required: item.minKarmaRequired,
+                product_category: normalizeProductCategory(productCategory),
                 created_by_user_id: currentUser.id,
                 estimated_price: estimatedPrice,
                 utility_level: utilityLevel,

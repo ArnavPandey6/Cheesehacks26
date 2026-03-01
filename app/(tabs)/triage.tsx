@@ -39,6 +39,18 @@ const conditionOptions: { label: string; value: ConditionLevel }[] = [
   { label: 'Worn', value: 'worn' },
 ];
 
+const categorySuggestions = [
+  'Electronics',
+  'Furniture',
+  'Kitchen',
+  'Cleaning',
+  'Tools',
+  'Office',
+  'Decor',
+  'Clothing',
+  'Other',
+];
+
 export default function TriageScreen() {
   const { adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
   const colorScheme = useColorScheme();
@@ -48,6 +60,7 @@ export default function TriageScreen() {
   const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
   const [itemName, setItemName] = useState('');
   const [itemDesc, setItemDesc] = useState('');
+  const [productCategory, setProductCategory] = useState('');
   const [estimatedPriceInput, setEstimatedPriceInput] = useState('');
   const [utilityLevel, setUtilityLevel] = useState<UtilityLevel>('medium');
   const [conditionLevel, setConditionLevel] = useState<ConditionLevel>('good');
@@ -124,6 +137,9 @@ export default function TriageScreen() {
       if (shouldForceAutofill || !itemDesc.trim()) {
         setItemDesc(suggestion.description);
       }
+      if (shouldForceAutofill || !productCategory.trim()) {
+        setProductCategory(suggestion.itemName);
+      }
       if (shouldForceAutofill || !estimatedPriceInput.trim()) {
         setEstimatedPriceInput(String(suggestion.estimatedPrice));
       }
@@ -148,8 +164,8 @@ export default function TriageScreen() {
   };
 
   const handleEvaluate = () => {
-    if (!itemName.trim() || !imageUri) {
-      Alert.alert('Missing Info', 'Please provide a name and add a photo before evaluating.');
+    if (!itemName.trim() || !imageUri || !productCategory.trim()) {
+      Alert.alert('Missing Info', 'Please provide item name, category, and a photo before evaluating.');
       return;
     }
     if (!hasValidEstimatedPrice) {
@@ -169,6 +185,7 @@ export default function TriageScreen() {
   const resetFlow = () => {
     setItemName('');
     setItemDesc('');
+    setProductCategory('');
     setEstimatedPriceInput('');
     setUtilityLevel('medium');
     setConditionLevel('good');
@@ -184,6 +201,10 @@ export default function TriageScreen() {
       Alert.alert('Missing Info', 'Add a valid estimated price before donating.');
       return;
     }
+    if (!productCategory.trim()) {
+      Alert.alert('Missing Info', 'Add a product category before donating.');
+      return;
+    }
 
     const newItem: VaultItem = {
       id: `item_${Date.now()}`,
@@ -192,6 +213,7 @@ export default function TriageScreen() {
       imageUrl: imageUri!,
       status: 'available',
       minKarmaRequired: deriveBorrowRequirement(calculatedKarma),
+      productCategory,
       estimatedPrice: normalizedEstimatedPrice,
       utilityLevel,
       conditionLevel,
@@ -209,11 +231,15 @@ export default function TriageScreen() {
   };
 
   const handleGiveToNeighbor = async () => {
+    if (!productCategory.trim()) {
+      Alert.alert('Missing Info', 'Add a product category before posting.');
+      return;
+    }
     setIsSubmittingAction(true);
     const post = await addFeedPost({
       content: itemDesc
-        ? `Offering ${itemName}: ${itemDesc}`
-        : `Offering ${itemName}. Message me if you want to claim it.`,
+        ? `Offering ${itemName} (${productCategory}): ${itemDesc}`
+        : `Offering ${itemName} (${productCategory}). Message me if you want to claim it.`,
       isOffer: true,
       imageUrl: imageUri ?? undefined,
     });
@@ -354,6 +380,53 @@ export default function TriageScreen() {
                 </View>
 
                 <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Product Category</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.surfaceStrong,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        fontFamily: fonts.body,
+                      },
+                    ]}
+                    placeholder="e.g. Electronics, Furniture, Kitchen"
+                    placeholderTextColor={theme.textSoft}
+                    value={productCategory}
+                    onChangeText={setProductCategory}
+                  />
+                  <View style={styles.categoryQuickWrap}>
+                    {categorySuggestions.map((category) => {
+                      const isActive = category.toLowerCase() === productCategory.trim().toLowerCase();
+                      return (
+                        <TouchableOpacity
+                          key={category}
+                          style={[
+                            styles.categoryQuickChip,
+                            {
+                              backgroundColor: isActive ? theme.accentSoft : theme.surfaceStrong,
+                              borderColor: isActive ? theme.accent : theme.border,
+                            },
+                          ]}
+                          onPress={() => setProductCategory(category)}>
+                          <Text
+                            style={[
+                              styles.categoryQuickChipText,
+                              {
+                                color: isActive ? theme.accentDeep : theme.textMuted,
+                                fontFamily: fonts.mono,
+                              },
+                            ]}>
+                            {category}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
                   <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Estimated Price (USD)</Text>
                   <TextInput
                     style={[
@@ -448,7 +521,7 @@ export default function TriageScreen() {
                 <TouchableOpacity
                   style={[
                     styles.evaluateBtn,
-                    { backgroundColor: !itemName.trim() || !imageUri || !hasValidEstimatedPrice ? theme.borderStrong : theme.accentDeep },
+                    { backgroundColor: !itemName.trim() || !imageUri || !productCategory.trim() || !hasValidEstimatedPrice ? theme.borderStrong : theme.accentDeep },
                   ]}
                   onPress={handleEvaluate}>
                   <Sparkles size={18} color={theme.text} />
@@ -469,7 +542,7 @@ export default function TriageScreen() {
                     <Text style={[styles.detectedName, { color: theme.text, fontFamily: fonts.body }]}>{itemName}</Text>
                     {itemDesc ? <Text style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
                     <Text style={[styles.detectedMeta, { color: theme.textSoft, fontFamily: fonts.mono }]}>
-                      ${normalizedEstimatedPrice.toFixed(2)} | {utilityLevel} utility | {conditionLevel}
+                      {productCategory} | ${normalizedEstimatedPrice.toFixed(2)} | {utilityLevel} utility | {conditionLevel}
                     </Text>
                     <View style={styles.karmaRow}>
                       <Text style={[styles.karmaNumber, { color: theme.text, fontFamily: fonts.display }]}>+{calculatedKarma}</Text>
@@ -636,6 +709,22 @@ const styles = StyleSheet.create({
   hintText: {
     fontSize: 10,
     marginTop: 4,
+  },
+  categoryQuickWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  categoryQuickChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  categoryQuickChipText: {
+    fontSize: 10,
+    textTransform: 'uppercase',
   },
   choiceRow: {
     flexDirection: 'row',

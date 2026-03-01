@@ -26,6 +26,7 @@ create table if not exists public.vault_items (
     image_url text not null,
     status text not null default 'available' check (status in ('available', 'reserved', 'on-loan')),
     min_karma_required integer not null default 0 check (min_karma_required >= 0),
+    product_category text not null default 'Uncategorized',
     reserved_by_user_id uuid null references public.profiles(id) on delete set null,
     created_by_user_id uuid null references public.profiles(id) on delete set null,
     created_at timestamptz not null default now()
@@ -1126,3 +1127,32 @@ delete from auth.users;
 
 -- Safety cleanup in case any profile rows remain.
 delete from public.profiles;
+
+-- VAULT PRODUCT CATEGORY (synced from migration 20260301213000)
+
+-- Add product category for vault filtering.
+
+alter table public.vault_items
+    add column if not exists product_category text not null default 'Uncategorized';
+
+update public.vault_items
+set product_category = 'Uncategorized'
+where product_category is null or btrim(product_category) = '';
+
+do $$
+begin
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'vault_product_category_nonempty_check'
+          and conrelid = 'public.vault_items'::regclass
+    ) then
+        alter table public.vault_items
+            add constraint vault_product_category_nonempty_check
+            check (char_length(btrim(product_category)) > 0);
+    end if;
+end;
+$$;
+
+create index if not exists idx_vault_items_product_category
+    on public.vault_items(product_category);

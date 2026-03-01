@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -24,13 +24,35 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore, VaultItem } from '@/store/useStore';
 
 const isRemoteImageUrl = (value: string) => /^https?:\/\//i.test(value);
-const categories = ['All', 'Cleaning', 'Tools', 'Kitchen', 'Moving', 'Furniture'];
+
+const normalizeCategory = (value: string) => value.trim().toLowerCase();
 
 export default function VaultScreen() {
   const { vaultItems, reserveItem, currentUser, hasHydrated } = useStore();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const entranceStyle = useEntranceAnimation(420, 16);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+
+  const categories = useMemo(() => {
+    const unique = new Set<string>();
+    vaultItems.forEach((item) => {
+      if (item.productCategory?.trim()) unique.add(item.productCategory.trim());
+    });
+    return ['All', ...Array.from(unique).sort((a, b) => a.localeCompare(b))];
+  }, [vaultItems]);
+
+  const filteredVaultItems = useMemo(() => {
+    if (selectedCategory === 'All') return vaultItems;
+    const selected = normalizeCategory(selectedCategory);
+    return vaultItems.filter((item) => normalizeCategory(item.productCategory) === selected);
+  }, [selectedCategory, vaultItems]);
+
+  useEffect(() => {
+    if (!categories.includes(selectedCategory)) {
+      setSelectedCategory('All');
+    }
+  }, [categories, selectedCategory]);
 
   if (!hasHydrated) return null;
   if (!currentUser) return <Redirect href="../auth" />;
@@ -74,11 +96,11 @@ export default function VaultScreen() {
           </View>
         )}
 
-        <View style={styles.cardBody}>
-          <View style={styles.cardTopRow}>
-            <Text style={[styles.itemName, { color: theme.text, fontFamily: fonts.body }]} numberOfLines={1}>
-              {item.name}
-            </Text>
+          <View style={styles.cardBody}>
+            <View style={styles.cardTopRow}>
+              <Text style={[styles.itemName, { color: theme.text, fontFamily: fonts.body }]} numberOfLines={1}>
+                {item.name}
+              </Text>
             <View
               style={[
                 styles.statusChip,
@@ -96,6 +118,14 @@ export default function VaultScreen() {
                   },
                 ]}>
                 {statusLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.itemMetaRow}>
+            <View style={[styles.categoryChip, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
+              <Text style={[styles.categoryChipText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>
+                {item.productCategory}
               </Text>
             </View>
           </View>
@@ -164,7 +194,7 @@ export default function VaultScreen() {
 
       <Animated.View style={[styles.listWrap, entranceStyle]}>
         <FlatList
-          data={vaultItems}
+          data={filteredVaultItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContainer}
@@ -182,32 +212,36 @@ export default function VaultScreen() {
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-                {categories.map((chip, index) => (
-                  <View
-                    key={chip}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor: index === 0 ? theme.surfaceInverted : theme.surfaceStrong,
-                        borderColor: index === 0 ? theme.surfaceInverted : theme.border,
-                      },
-                    ]}>
-                    <Text
+                {categories.map((chip) => {
+                  const isActive = chip === selectedCategory;
+                  return (
+                    <TouchableOpacity
+                      key={chip}
+                      onPress={() => setSelectedCategory(chip)}
                       style={[
-                        styles.chipText,
+                        styles.chip,
                         {
-                          color: index === 0 ? theme.text : theme.textMuted,
-                          fontFamily: fonts.mono,
+                          backgroundColor: isActive ? theme.surfaceInverted : theme.surfaceStrong,
+                          borderColor: isActive ? theme.surfaceInverted : theme.border,
                         },
                       ]}>
-                      {chip}
-                    </Text>
-                  </View>
-                ))}
+                      <Text
+                        style={[
+                          styles.chipText,
+                          {
+                            color: isActive ? theme.text : theme.textMuted,
+                            fontFamily: fonts.mono,
+                          },
+                        ]}>
+                        {chip}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
 
               <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>
-                Building Library - {vaultItems.length} items
+                Building Library - {filteredVaultItems.length} items
               </Text>
             </>
           }
@@ -319,6 +353,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginBottom: 9,
+  },
+  itemMetaRow: {
+    marginBottom: 7,
+  },
+  categoryChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  categoryChipText: {
+    fontSize: 9,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
   },
   bottomRow: {
     alignItems: 'center',
