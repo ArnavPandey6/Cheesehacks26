@@ -266,7 +266,10 @@ export default function TriageScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
         <Animated.View style={[styles.contentWrap, entranceStyle]}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
             <View style={[styles.heroCard, { backgroundColor: theme.surfaceInverted, borderColor: theme.borderStrong }]}>
               <Text style={[styles.heroKicker, { color: theme.textSoft, fontFamily: fonts.mono }]}>Move-Out Mode</Text>
               <Text style={[styles.heroTitle, { color: theme.text, fontFamily: fonts.display }]}>
@@ -535,12 +538,12 @@ export default function TriageScreen() {
                 <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>AI Detected</Text>
                 <View style={[styles.detectedRow, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
                   <View style={[styles.detectedImageWrap, { backgroundColor: theme.accentSoft }]}>
-                    <Image source={{ uri: imageUri! }} style={styles.previewImage} />
+                    <Image source={{ uri: imageUri! }} style={styles.previewImage} resizeMode="cover" />
                   </View>
                   <View style={styles.detectedBody}>
                     <Text style={[styles.detectedTag, { color: theme.accentDeep, fontFamily: fonts.mono }]}>AI identified</Text>
                     <Text style={[styles.detectedName, { color: theme.text, fontFamily: fonts.body }]}>{itemName}</Text>
-                    {itemDesc ? <Text style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
+                    {itemDesc ? <Text numberOfLines={3} style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
                     <Text style={[styles.detectedMeta, { color: theme.textSoft, fontFamily: fonts.mono }]}>
                       {productCategory} | ${normalizedEstimatedPrice.toFixed(2)} | {utilityLevel} utility | {conditionLevel}
                     </Text>
@@ -608,8 +611,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    flexGrow: 1,
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 72,
   },
   heroCard: {
     borderRadius: radii.lg,
@@ -769,12 +773,12 @@ const styles = StyleSheet.create({
   detectedRow: {
     borderRadius: 14,
     borderWidth: 1,
-    flexDirection: 'row',
     marginBottom: 10,
     overflow: 'hidden',
   },
   detectedImageWrap: {
-    width: 98,
+    height: 220,
+    width: '100%',
   },
   previewImage: {
     height: '100%',
@@ -821,8 +825,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   relayPair: {
-    flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     marginBottom: 12,
   },
   relayBtn: {
