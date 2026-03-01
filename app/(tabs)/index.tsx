@@ -18,7 +18,7 @@ import {
 import { Redirect, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, CheckCircle, Image as ImageIcon, MessageCircle, Send, Sparkles, Trash2, UserCircle, X } from 'lucide-react-native';
+import { Camera, CheckCircle, Image as ImageIcon, MessageCircle, Send, Trash2, UserCircle, X } from 'lucide-react-native';
 
 import { Atmosphere } from '@/components/ui/atmosphere';
 import { LoopHeader } from '@/components/ui/loop-header';
@@ -388,22 +388,6 @@ export default function HallwayScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <>
-              <View style={[styles.triageBanner, { backgroundColor: theme.surfaceInverted, borderColor: theme.borderStrong }]}>
-                <View style={[styles.triageIconBox, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
-                  <Sparkles size={14} color={theme.accentDeep} />
-                </View>
-                <View style={styles.bannerBody}>
-                  <Text style={[styles.triageBannerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                    Triage Mode Live
-                  </Text>
-                  <Text style={[styles.triageBannerSub, { color: theme.textMuted, fontFamily: fonts.body }]}>
-                    Move-out season relay is active across your building.
-                  </Text>
-                </View>
-                <Text style={[styles.triageBannerCount, { color: theme.text, fontFamily: fonts.display }]}>
-                  {feedPosts.length}
-                </Text>
-              </View>
               <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>Live Feed</Text>
             </>
           }
