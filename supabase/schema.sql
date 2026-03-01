@@ -117,6 +117,7 @@ with check (created_by_user_id = auth.uid());
 drop policy if exists feed_select on public.feed_posts;
 drop policy if exists feed_insert_author on public.feed_posts;
 drop policy if exists feed_update_authenticated on public.feed_posts;
+drop policy if exists feed_delete_author on public.feed_posts;
 create policy feed_select on public.feed_posts
 for select to authenticated
 using (true);
@@ -124,6 +125,9 @@ using (true);
 create policy feed_insert_author on public.feed_posts
 for insert to authenticated
 with check (author_user_id = auth.uid());
+create policy feed_delete_author on public.feed_posts
+for delete to authenticated
+using (author_user_id = auth.uid());
 
 drop policy if exists feed_post_messages_select on public.feed_post_messages;
 drop policy if exists feed_post_messages_insert_sender on public.feed_post_messages;
