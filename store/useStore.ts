@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 
 import { getSupabaseClient, isSupabaseConfigured, supabaseConfigError } from '@/store/supabaseClient';
+import type { ConditionLevel, UtilityLevel } from '@/store/karma';
 
 export type User = {
     id: string;
@@ -21,6 +22,11 @@ export type VaultItem = {
     status: 'available' | 'reserved' | 'on-loan';
     minKarmaRequired: number;
     reservedByUserId?: string | null;
+    estimatedPrice?: number;
+    utilityLevel?: UtilityLevel;
+    conditionLevel?: ConditionLevel;
+    successfulBorrows?: number;
+    dueDate?: string | null;
 };
 
 export type FeedOfferState = 'open' | 'claimed' | 'returned';
@@ -38,6 +44,8 @@ export type FeedPost = {
     claimedByName?: string | null;
     claimedAt?: string | null;
     returnedAt?: string | null;
+    dueDate?: string | null;
+    karmaMinted?: boolean;
 };
 
 export type FeedPostInput = {
@@ -80,6 +88,10 @@ export type HallwayReturnCodeResult =
     | { ok: true; code: string }
     | { ok: false; reason: string };
 
+export type AdoptItemResult =
+    | { ok: true; awardedKarma: number; itemId: string }
+    | { ok: false; reason: string };
+
 type RawProfileRow = {
     id: string;
     name: string;
@@ -98,6 +110,11 @@ type RawVaultItemRow = {
     status: 'available' | 'reserved' | 'on-loan';
     min_karma_required: number;
     reserved_by_user_id: string | null;
+    estimated_price: number | null;
+    utility_level: string | null;
+    condition_level: string | null;
+    successful_borrows: number | null;
+    due_date: string | null;
     created_at: string;
 };
 
@@ -111,6 +128,8 @@ type RawFeedPostRow = {
     claimed_by_user_id: string | null;
     claimed_at: string | null;
     returned_at: string | null;
+    due_date: string | null;
+    karma_minted: boolean | null;
     created_at: string;
 };
 
@@ -159,7 +178,7 @@ interface AppState {
     claimFeedOffer: (postId: string) => Promise<ActionResult>;
     createHallwayReturnCode: (postId: string) => Promise<HallwayReturnCodeResult>;
     markFeedOfferReturned: (postId: string, returnToken: string) => Promise<ActionResult>;
-    adoptItemToVault: (item: VaultItem) => Promise<ActionResult>;
+    adoptItemToVault: (item: VaultItem, options?: { isTriageMode?: boolean }) => Promise<AdoptItemResult>;
 }
 
 const normalizeEmail = (value: string) => value.trim();
@@ -191,6 +210,12 @@ const mapProfileRow = (row: RawProfileRow): User => ({
     createdAt: row.created_at,
 });
 
+const isUtilityLevel = (value: string | null | undefined): value is UtilityLevel =>
+    value === 'high' || value === 'medium' || value === 'low';
+
+const isConditionLevel = (value: string | null | undefined): value is ConditionLevel =>
+    value === 'new' || value === 'good' || value === 'worn';
+
 const mapVaultRow = (row: RawVaultItemRow): VaultItem => ({
     id: row.id,
     name: row.name,
@@ -199,6 +224,11 @@ const mapVaultRow = (row: RawVaultItemRow): VaultItem => ({
     status: row.status,
     minKarmaRequired: row.min_karma_required,
     reservedByUserId: row.reserved_by_user_id,
+    estimatedPrice: row.estimated_price ?? 0,
+    utilityLevel: isUtilityLevel(row.utility_level) ? row.utility_level : 'medium',
+    conditionLevel: isConditionLevel(row.condition_level) ? row.condition_level : 'good',
+    successfulBorrows: row.successful_borrows ?? 0,
+    dueDate: row.due_date,
 });
 
 const mapFeedRow = (row: RawFeedPostRow, profilesById: Record<string, User>): FeedPost => ({
@@ -214,6 +244,8 @@ const mapFeedRow = (row: RawFeedPostRow, profilesById: Record<string, User>): Fe
     claimedByName: row.claimed_by_user_id ? profilesById[row.claimed_by_user_id]?.name ?? 'Neighbor' : null,
     claimedAt: row.claimed_at,
     returnedAt: row.returned_at,
+    dueDate: row.due_date,
+    karmaMinted: row.karma_minted ?? false,
 });
 
 const mapFeedMessageRow = (
@@ -441,11 +473,11 @@ const loadAllDataFromSupabase = async (sessionUserId: string | null) => {
             .order('created_at', { ascending: true }),
         supabase
             .from('vault_items')
-            .select('id,name,description,image_url,status,min_karma_required,reserved_by_user_id,created_at')
+            .select('id,name,description,image_url,status,min_karma_required,reserved_by_user_id,estimated_price,utility_level,condition_level,successful_borrows,due_date,created_at')
             .order('created_at', { ascending: false }),
         supabase
             .from('feed_posts')
-            .select('id,author_user_id,content,is_offer,image_url,offer_state,claimed_by_user_id,claimed_at,returned_at,created_at')
+            .select('id,author_user_id,content,is_offer,image_url,offer_state,claimed_by_user_id,claimed_at,returned_at,due_date,karma_minted,created_at')
             .order('created_at', { ascending: false }),
     ]);
 
@@ -1040,7 +1072,7 @@ export const useStore = create<AppState>((set, get) => ({
         return { ok: true };
     },
 
-    adoptItemToVault: async (item: VaultItem) => {
+    adoptItemToVault: async (item: VaultItem, options?: { isTriageMode?: boolean }) => {
         if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
         const currentUser = get().currentUser;
         if (!currentUser) return { ok: false, reason: 'Please sign in first.' };
@@ -1055,18 +1087,46 @@ export const useStore = create<AppState>((set, get) => ({
         if (!uploadedImageUrl) return { ok: false, reason: 'Image upload failed. Please try again.' };
 
         const supabase = getSupabaseClient();
-        const { error } = await supabase.from('vault_items').insert({
-            name: item.name,
-            description: item.description,
-            image_url: uploadedImageUrl,
-            status: 'available',
-            min_karma_required: item.minKarmaRequired,
-            created_by_user_id: currentUser.id,
-        });
+        const estimatedPrice = Number.isFinite(item.estimatedPrice ?? NaN)
+            ? Math.max(0, item.estimatedPrice ?? 0)
+            : 0;
+        const utilityLevel = item.utilityLevel ?? 'medium';
+        const conditionLevel = item.conditionLevel ?? 'good';
+
+        const { data: insertedItem, error } = await supabase
+            .from('vault_items')
+            .insert({
+                name: item.name,
+                description: item.description,
+                image_url: uploadedImageUrl,
+                status: 'available',
+                min_karma_required: item.minKarmaRequired,
+                created_by_user_id: currentUser.id,
+                estimated_price: estimatedPrice,
+                utility_level: utilityLevel,
+                condition_level: conditionLevel,
+            })
+            .select('id')
+            .single();
 
         if (error) return { ok: false, reason: error.message };
+
+        const { data: awardedKarmaData, error: awardError } = await supabase.rpc('award_donation_karma', {
+            p_item_id: insertedItem.id,
+            p_is_triage_mode: Boolean(options?.isTriageMode),
+        });
+
+        if (awardError) {
+            await get().refreshAllData();
+            return { ok: false, reason: `Item was added, but karma minting failed: ${awardError.message}` };
+        }
+
         await get().refreshAllData();
-        return { ok: true };
+        return {
+            ok: true,
+            itemId: insertedItem.id,
+            awardedKarma: typeof awardedKarmaData === 'number' ? awardedKarmaData : 0,
+        };
     },
 
     deleteFeedPost: async (postId: string) => {

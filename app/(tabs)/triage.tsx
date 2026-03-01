@@ -22,11 +22,24 @@ import { LoopHeader } from '@/components/ui/loop-header';
 import { fonts, getTheme, radii } from '@/components/ui/theme';
 import { useEntranceAnimation } from '@/components/ui/use-entrance-animation';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { deriveBorrowRequirement, evaluateKarmaValue } from '@/store/karmaEvaluator';
+import { computeDonationKarma, type ConditionLevel, type UtilityLevel } from '@/store/karma';
+import { deriveBorrowRequirement } from '@/store/karmaEvaluator';
 import { useStore, VaultItem } from '@/store/useStore';
 
+const utilityOptions: { label: string; value: UtilityLevel }[] = [
+  { label: 'High', value: 'high' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Low', value: 'low' },
+];
+
+const conditionOptions: { label: string; value: ConditionLevel }[] = [
+  { label: 'New', value: 'new' },
+  { label: 'Good', value: 'good' },
+  { label: 'Worn', value: 'worn' },
+];
+
 export default function TriageScreen() {
-  const { addKarma, adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
+  const { adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const entranceStyle = useEntranceAnimation(440, 20);
@@ -34,9 +47,14 @@ export default function TriageScreen() {
   const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
   const [itemName, setItemName] = useState('');
   const [itemDesc, setItemDesc] = useState('');
+  const [estimatedPriceInput, setEstimatedPriceInput] = useState('');
+  const [utilityLevel, setUtilityLevel] = useState<UtilityLevel>('medium');
+  const [conditionLevel, setConditionLevel] = useState<ConditionLevel>('good');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [calculatedKarma, setCalculatedKarma] = useState(0);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const normalizedEstimatedPrice = Number.parseFloat(estimatedPriceInput.replace(/[^0-9.]/g, ''));
+  const hasValidEstimatedPrice = Number.isFinite(normalizedEstimatedPrice) && normalizedEstimatedPrice > 0;
 
   if (!hasHydrated) return null;
   if (!currentUser) return <Redirect href="../auth" />;
@@ -77,10 +95,15 @@ export default function TriageScreen() {
       Alert.alert('Missing Info', 'Please provide a name and add a photo before evaluating.');
       return;
     }
-    const evaluatedKarma = evaluateKarmaValue({
-      itemName,
-      itemDescription: itemDesc,
-      hasPhoto: Boolean(imageUri),
+    if (!hasValidEstimatedPrice) {
+      Alert.alert('Missing Info', 'Add a valid estimated price before evaluating.');
+      return;
+    }
+    const evaluatedKarma = computeDonationKarma({
+      estimatedPrice: normalizedEstimatedPrice,
+      utility: utilityLevel,
+      condition: conditionLevel,
+      isTriageMode: true,
     });
     setCalculatedKarma(evaluatedKarma);
     setStep('EVALUATED');
@@ -89,12 +112,20 @@ export default function TriageScreen() {
   const resetFlow = () => {
     setItemName('');
     setItemDesc('');
+    setEstimatedPriceInput('');
+    setUtilityLevel('medium');
+    setConditionLevel('good');
     setImageUri(null);
     setCalculatedKarma(0);
     setStep('INPUT');
   };
 
   const handleDonateToLibrary = async () => {
+    if (!hasValidEstimatedPrice) {
+      Alert.alert('Missing Info', 'Add a valid estimated price before donating.');
+      return;
+    }
+
     const newItem: VaultItem = {
       id: `item_${Date.now()}`,
       name: itemName,
@@ -102,29 +133,23 @@ export default function TriageScreen() {
       imageUrl: imageUri!,
       status: 'available',
       minKarmaRequired: deriveBorrowRequirement(calculatedKarma),
+      estimatedPrice: normalizedEstimatedPrice,
+      utilityLevel,
+      conditionLevel,
     };
     setIsSubmittingAction(true);
-    const adoptResult = await adoptItemToVault(newItem);
+    const adoptResult = await adoptItemToVault(newItem, { isTriageMode: true });
     if (!adoptResult.ok) {
       Alert.alert('Unable to Add Item', adoptResult.reason ?? backendError ?? 'Please try again.');
       setIsSubmittingAction(false);
       return;
     }
 
-    const karmaResult = await addKarma(calculatedKarma);
-    if (!karmaResult.ok) {
-      Alert.alert('Item Added, Karma Failed', karmaResult.reason);
-      setIsSubmittingAction(false);
-      resetFlow();
-      return;
-    }
-
     setIsSubmittingAction(false);
-    Alert.alert('Adopted!', `Item added to The Vault. You earned +${calculatedKarma} Karma!`, [{ text: 'OK', onPress: resetFlow }]);
+    Alert.alert('Adopted!', `Item added to The Vault. You earned +${adoptResult.awardedKarma} Karma!`, [{ text: 'OK', onPress: resetFlow }]);
   };
 
   const handleGiveToNeighbor = async () => {
-    const partialKarma = Math.floor(calculatedKarma / 2);
     setIsSubmittingAction(true);
     const post = await addFeedPost({
       content: itemDesc
@@ -139,16 +164,8 @@ export default function TriageScreen() {
       return;
     }
 
-    const karmaResult = await addKarma(partialKarma);
-    if (!karmaResult.ok) {
-      Alert.alert('Offer Posted, Karma Failed', karmaResult.reason);
-      setIsSubmittingAction(false);
-      resetFlow();
-      return;
-    }
-
     setIsSubmittingAction(false);
-    Alert.alert('Relayed!', `Item posted to Hallway as an offer. You earned +${partialKarma} Karma.`, [{ text: 'OK', onPress: resetFlow }]);
+    Alert.alert('Relayed!', 'Item posted to Hallway. Karma is awarded after successful return.', [{ text: 'OK', onPress: resetFlow }]);
   };
 
   return (
@@ -248,10 +265,97 @@ export default function TriageScreen() {
                   />
                 </View>
 
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Estimated Price (USD)</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.surfaceStrong,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        fontFamily: fonts.body,
+                      },
+                    ]}
+                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+                    placeholder="e.g. 45"
+                    placeholderTextColor={theme.textSoft}
+                    value={estimatedPriceInput}
+                    onChangeText={setEstimatedPriceInput}
+                  />
+                  <Text style={[styles.hintText, { color: theme.textSoft, fontFamily: fonts.body }]}>
+                    Used for karma scoring only.
+                  </Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Utility Level</Text>
+                  <View style={styles.choiceRow}>
+                    {utilityOptions.map((option) => {
+                      const isActive = utilityLevel === option.value;
+                      return (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.choiceChip,
+                            {
+                              backgroundColor: isActive ? theme.accentSoft : theme.surfaceStrong,
+                              borderColor: isActive ? theme.accent : theme.border,
+                            },
+                          ]}
+                          onPress={() => setUtilityLevel(option.value)}>
+                          <Text
+                            style={[
+                              styles.choiceChipText,
+                              {
+                                color: isActive ? theme.accentDeep : theme.textMuted,
+                                fontFamily: fonts.mono,
+                              },
+                            ]}>
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Condition</Text>
+                  <View style={styles.choiceRow}>
+                    {conditionOptions.map((option) => {
+                      const isActive = conditionLevel === option.value;
+                      return (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.choiceChip,
+                            {
+                              backgroundColor: isActive ? theme.accentSoft : theme.surfaceStrong,
+                              borderColor: isActive ? theme.accent : theme.border,
+                            },
+                          ]}
+                          onPress={() => setConditionLevel(option.value)}>
+                          <Text
+                            style={[
+                              styles.choiceChipText,
+                              {
+                                color: isActive ? theme.accentDeep : theme.textMuted,
+                                fontFamily: fonts.mono,
+                              },
+                            ]}>
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
                 <TouchableOpacity
                   style={[
                     styles.evaluateBtn,
-                    { backgroundColor: !itemName.trim() || !imageUri ? theme.borderStrong : theme.accentDeep },
+                    { backgroundColor: !itemName.trim() || !imageUri || !hasValidEstimatedPrice ? theme.borderStrong : theme.accentDeep },
                   ]}
                   onPress={handleEvaluate}>
                   <Sparkles size={18} color={theme.text} />
@@ -271,6 +375,9 @@ export default function TriageScreen() {
                     <Text style={[styles.detectedTag, { color: theme.accentDeep, fontFamily: fonts.mono }]}>AI identified</Text>
                     <Text style={[styles.detectedName, { color: theme.text, fontFamily: fonts.body }]}>{itemName}</Text>
                     {itemDesc ? <Text style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
+                    <Text style={[styles.detectedMeta, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+                      ${normalizedEstimatedPrice.toFixed(2)} | {utilityLevel} utility | {conditionLevel}
+                    </Text>
                     <View style={styles.karmaRow}>
                       <Text style={[styles.karmaNumber, { color: theme.text, fontFamily: fonts.display }]}>+{calculatedKarma}</Text>
                       <Text style={[styles.karmaLabel, { color: theme.textSoft, fontFamily: fonts.mono }]}>karma pts</Text>
@@ -292,7 +399,7 @@ export default function TriageScreen() {
                     disabled={isSubmittingAction}>
                     <Users size={19} color={theme.text} />
                     <Text style={[styles.relayTitle, { color: theme.text, fontFamily: fonts.body }]}>Give to Neighbor</Text>
-                    <Text style={[styles.relaySub, { color: theme.textSoft, fontFamily: fonts.body }]}>Post to Hallway, half karma.</Text>
+                    <Text style={[styles.relaySub, { color: theme.textSoft, fontFamily: fonts.body }]}>Post to Hallway, reward on return.</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -414,6 +521,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  hintText: {
+    fontSize: 10,
+    marginTop: 4,
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  choiceChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  choiceChipText: {
+    fontSize: 10,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
   textArea: {
     height: 98,
     textAlignVertical: 'top',
@@ -470,6 +597,12 @@ const styles = StyleSheet.create({
   detectedSub: {
     fontSize: 11,
     lineHeight: 16,
+  },
+  detectedMeta: {
+    fontSize: 9,
+    letterSpacing: 0.6,
+    marginTop: 4,
+    textTransform: 'uppercase',
   },
   karmaRow: {
     alignItems: 'baseline',
