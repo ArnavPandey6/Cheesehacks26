@@ -96,6 +96,7 @@ with check (created_by_user_id = auth.uid());
 drop policy if exists feed_select on public.feed_posts;
 drop policy if exists feed_insert_author on public.feed_posts;
 drop policy if exists feed_update_authenticated on public.feed_posts;
+drop policy if exists feed_delete_author on public.feed_posts;
 create policy feed_select on public.feed_posts
 for select to authenticated
 using (true);
@@ -103,6 +104,10 @@ using (true);
 create policy feed_insert_author on public.feed_posts
 for insert to authenticated
 with check (author_user_id = auth.uid());
+
+create policy feed_delete_author on public.feed_posts
+for delete to authenticated
+using (author_user_id = auth.uid());
 
 drop policy if exists hallway_return_tokens_owner_or_borrower_select on public.hallway_return_tokens;
 create policy hallway_return_tokens_owner_or_borrower_select on public.hallway_return_tokens

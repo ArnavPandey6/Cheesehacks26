@@ -18,7 +18,7 @@ import {
 import { Redirect } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import * as ImagePicker from 'expo-image-picker';
-import { Bell, Camera, CheckCircle, Image as ImageIcon, Send, Sparkles, UserCircle, X } from 'lucide-react-native';
+import { Bell, Camera, CheckCircle, Image as ImageIcon, Send, Sparkles, Trash2, UserCircle, X } from 'lucide-react-native';
 
 import { Atmosphere } from '@/components/ui/atmosphere';
 import { LoopHeader } from '@/components/ui/loop-header';
@@ -130,7 +130,7 @@ const swipeStyles = StyleSheet.create({
 // ─── Main Screen ───────────────────────────────────────────────────────────
 
 export default function HallwayScreen() {
-  const { feedPosts, addFeedPost, currentUser, claimFeedOffer, hasHydrated, backendError } = useStore();
+  const { feedPosts, addFeedPost, deleteFeedPost, currentUser, claimFeedOffer, hasHydrated, backendError } = useStore();
   const [newPostContent, setNewPostContent] = useState('');
   const [isOffer, setIsOffer] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
@@ -171,6 +171,20 @@ export default function HallwayScreen() {
       return;
     }
     Alert.alert('Claimed', 'This item is now in your active hallway borrows.');
+  };
+
+  const handleDelete = (postId: string) => {
+    Alert.alert('Remove Post', 'Are you sure you want to remove this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await deleteFeedPost(postId);
+          if (!result.ok) Alert.alert('Error', result.reason);
+        },
+      },
+    ]);
   };
 
   const pickFulfillImage = async (fromCamera: boolean) => {
@@ -256,6 +270,8 @@ export default function HallwayScreen() {
   const renderPostBody = (item: FeedPost) => {
     const isOfferPost = item.isOffer;
     const isSwipeable = !item.isOffer && item.authorUserId !== currentUser.id;
+    const isOwn = item.authorUserId === currentUser.id;
+    const canDelete = isOwn && !(item.isOffer && item.offerState === 'claimed');
     return (
       <View style={[styles.postCard, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, shadowColor: theme.shadow, marginBottom: 0 }]}>
         <View style={styles.postHeader}>
@@ -287,6 +303,13 @@ export default function HallwayScreen() {
               {isOfferPost ? 'offer' : 'request'}
             </Text>
           </View>
+          {canDelete && (
+            <TouchableOpacity
+              style={[styles.deleteBtn, { backgroundColor: theme.backgroundMuted }]}
+              onPress={() => handleDelete(item.id)}>
+              <Trash2 size={13} color={theme.textSoft} />
+            </TouchableOpacity>
+          )}
         </View>
         {isRemoteImageUrl(item.imageUrl) ? <Image source={{ uri: item.imageUrl }} style={styles.postImage} /> : null}
         <Text style={[styles.postContent, { color: theme.textMuted, fontFamily: fonts.body }]}>{item.content}</Text>
@@ -644,6 +667,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: 8,
     textTransform: 'uppercase',
+  },
+  deleteBtn: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 26,
+    justifyContent: 'center',
+    marginLeft: 6,
+    width: 26,
   },
   inputContainer: {
     borderTopLeftRadius: 18,

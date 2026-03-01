@@ -123,6 +123,7 @@ interface AppState {
     reserveItem: (itemId: string) => Promise<ActionResult>;
     returnItem: (itemId: string) => Promise<ActionResult>;
     addFeedPost: (post: FeedPostInput) => Promise<FeedPost | null>;
+    deleteFeedPost: (postId: string) => Promise<ActionResult>;
     claimFeedOffer: (postId: string) => Promise<ActionResult>;
     createHallwayReturnCode: (postId: string) => Promise<HallwayReturnCodeResult>;
     markFeedOfferReturned: (postId: string, returnToken: string) => Promise<ActionResult>;
@@ -746,6 +747,22 @@ export const useStore = create<AppState>((set, get) => ({
             min_karma_required: item.minKarmaRequired,
             created_by_user_id: currentUser.id,
         });
+
+        if (error) return { ok: false, reason: error.message };
+        await get().refreshAllData();
+        return { ok: true };
+    },
+
+    deleteFeedPost: async (postId: string) => {
+        if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
+        if (!get().currentUser) return { ok: false, reason: 'Please sign in first.' };
+
+        const supabase = getSupabaseClient();
+        const { error } = await supabase
+            .from('feed_posts')
+            .delete()
+            .eq('id', postId)
+            .eq('author_user_id', get().currentUser!.id);
 
         if (error) return { ok: false, reason: error.message };
         await get().refreshAllData();
