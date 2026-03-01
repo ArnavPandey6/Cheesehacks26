@@ -25,6 +25,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { computeDonationKarma, type ConditionLevel, type UtilityLevel } from '@/store/karma';
 import { deriveBorrowRequirement } from '@/store/karmaEvaluator';
 import { useStore, VaultItem } from '@/store/useStore';
+import { analyzeImageWithGoogleVision, isVisionConfigured } from '@/store/visionAssist';
 
 const utilityOptions: { label: string; value: UtilityLevel }[] = [
   { label: 'High', value: 'high' },
@@ -51,8 +52,10 @@ export default function TriageScreen() {
   const [utilityLevel, setUtilityLevel] = useState<UtilityLevel>('medium');
   const [conditionLevel, setConditionLevel] = useState<ConditionLevel>('good');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [calculatedKarma, setCalculatedKarma] = useState(0);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [isVisionAnalyzing, setIsVisionAnalyzing] = useState(false);
   const normalizedEstimatedPrice = Number.parseFloat(estimatedPriceInput.replace(/[^0-9.]/g, ''));
   const hasValidEstimatedPrice = Number.isFinite(normalizedEstimatedPrice) && normalizedEstimatedPrice > 0;
 
@@ -65,10 +68,12 @@ export default function TriageScreen() {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.6,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
+      setImageBase64(result.assets[0].base64 ?? null);
     }
   };
 
@@ -83,10 +88,49 @@ export default function TriageScreen() {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.6,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
+      setImageBase64(result.assets[0].base64 ?? null);
+    }
+  };
+
+  const handleVisionAssist = async () => {
+    if (!isVisionConfigured) {
+      Alert.alert(
+        'Vision Not Configured',
+        'Set EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY in your .env and restart Expo.'
+      );
+      return;
+    }
+
+    if (!imageBase64) {
+      Alert.alert('No Image Data', 'Pick or capture a photo first, then run AI Assist.');
+      return;
+    }
+
+    setIsVisionAnalyzing(true);
+    try {
+      const suggestion = await analyzeImageWithGoogleVision(imageBase64);
+      setItemName(suggestion.itemName);
+      if (!itemDesc.trim()) {
+        setItemDesc(suggestion.description);
+      }
+      setEstimatedPriceInput(String(suggestion.estimatedPrice));
+      setUtilityLevel(suggestion.utilityLevel);
+      setConditionLevel(suggestion.conditionLevel);
+
+      Alert.alert(
+        'AI Suggestions Ready',
+        `Detected ${suggestion.itemName} (${Math.round(suggestion.confidence * 100)}% confidence). Review fields before posting.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to analyze image with Google Vision.';
+      Alert.alert('Vision Analysis Failed', message);
+    } finally {
+      setIsVisionAnalyzing(false);
     }
   };
 
@@ -116,6 +160,7 @@ export default function TriageScreen() {
     setUtilityLevel('medium');
     setConditionLevel('good');
     setImageUri(null);
+    setImageBase64(null);
     setCalculatedKarma(0);
     setStep('INPUT');
   };
@@ -222,6 +267,35 @@ export default function TriageScreen() {
                       <Text style={[styles.photoBtnText, { color: theme.text, fontFamily: fonts.body }]}>Library</Text>
                     </TouchableOpacity>
                   </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.visionBtn,
+                      {
+                        backgroundColor: !imageBase64 || isVisionAnalyzing ? theme.borderStrong : theme.accentSoft,
+                        borderColor: !imageBase64 || isVisionAnalyzing ? theme.border : theme.accent,
+                      },
+                    ]}
+                    onPress={() => void handleVisionAssist()}
+                    disabled={!imageBase64 || isVisionAnalyzing}>
+                    <Sparkles size={16} color={!imageBase64 || isVisionAnalyzing ? theme.textSoft : theme.accentDeep} />
+                    <Text
+                      style={[
+                        styles.visionBtnText,
+                        {
+                          color: !imageBase64 || isVisionAnalyzing ? theme.textSoft : theme.accentDeep,
+                          fontFamily: fonts.mono,
+                        },
+                      ]}>
+                      {isVisionAnalyzing ? 'Analyzing image...' : 'AI Assist with Google Vision'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {!isVisionConfigured ? (
+                    <Text style={[styles.visionHint, { color: theme.textSoft, fontFamily: fonts.body }]}>
+                      Add `EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY` to enable AI assist.
+                    </Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.formGroup}>
@@ -504,6 +578,25 @@ const styles = StyleSheet.create({
   },
   photoBtnText: {
     fontSize: 13,
+  },
+  visionBtn: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 10,
+  },
+  visionBtnText: {
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  visionHint: {
+    fontSize: 10,
+    marginTop: 6,
   },
   formGroup: {
     marginBottom: 12,

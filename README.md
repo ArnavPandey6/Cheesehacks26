@@ -9,6 +9,7 @@ This app is now wired to Supabase for:
 - DB-issued hallway return QR tokens (owner-generated, borrower-verified)
 - Supabase Storage-backed image uploads (cross-user visible)
 - Realtime sync for profiles, hallway feed, and vault inventory
+- Optional Google Cloud Vision assist for triage item auto-suggestions
 
 ## 1) Configure Supabase
 
@@ -48,20 +49,31 @@ Create `.env` in the project root:
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY=YOUR_VISION_API_KEY
 ```
 
 Expo reads `EXPO_PUBLIC_*` variables at runtime.
 
-## 3) Install + run
+## 3) Google Vision setup (optional but recommended)
+
+1. In Google Cloud Console, enable `Cloud Vision API`.
+2. Create an API key and restrict it:
+   - Restrict API: `Cloud Vision API` only
+   - Restrict app usage: Android package / iOS bundle IDs for production
+3. Put key in `.env` as `EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY`.
+4. Restart Expo after changing `.env`.
+
+## 4) Install + run
 
 ```bash
 npm install
 npm.cmd run start -- --tunnel --clear --port 8082
 ```
 
-## 4) Notes
+## 5) Notes
 
 - If Supabase env vars are missing, the auth screen shows a config error.
 - All core state now comes from Supabase tables, not in-memory seed data.
 - Hallway owner-return QR flow is enforced in Supabase with short-lived DB tokens.
 - If you already ran older migrations, run `supabase db push --include-all` once.
+- Vision assist only suggests fields; user confirmation is still required before submission.
