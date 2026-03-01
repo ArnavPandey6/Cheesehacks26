@@ -9,7 +9,7 @@ create table if not exists public.profiles (
     apartment text not null,
     unit text not null,
     email text not null unique,
-    karma integer not null default 0 check (karma >= 0),
+    karma integer not null default 10 check (karma >= 0),
     created_at timestamptz not null default now()
 );
 
@@ -1108,6 +1108,20 @@ $$;
 
 -- Deletes all signed-up users in this Supabase project.
 -- profiles rows are removed via FK cascade from auth.users.
+delete from auth.users;
+
+-- Safety cleanup in case any profile rows remain.
+delete from public.profiles;
+
+-- KARMA DEFAULT 10 + USER WIPE (synced from migration 20260301203000)
+
+-- Requested reset:
+-- 1) New users start at 10 karma.
+-- 2) Delete all existing users.
+
+alter table public.profiles
+    alter column karma set default 10;
+
 delete from auth.users;
 
 -- Safety cleanup in case any profile rows remain.
