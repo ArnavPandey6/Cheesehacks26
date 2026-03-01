@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "relay-app",
-    "slug": "relay-app",
+    "name": "Relay Commons",
+    "slug": "relay-commons",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "relayapp",
+    "scheme": "relaycommons",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

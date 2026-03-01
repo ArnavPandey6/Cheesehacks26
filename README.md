@@ -1,50 +1,67 @@
-# Welcome to your Expo app 👋
+# Relay Commons (Supabase Wired)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This app is now wired to Supabase for:
 
-## Get started
+- Authentication (`sign up`, `sign in`, `sign out`)
+- Persistent profiles and karma
+- Vault inventory + reserve/return transactions
+- Hallway posts + claim/return transactions
+- DB-issued hallway return QR tokens (owner-generated, borrower-verified)
+- Supabase Storage-backed image uploads (cross-user visible)
+- Realtime sync for profiles, hallway feed, and vault inventory
 
-1. Install dependencies
+## 1) Configure Supabase
 
-   ```bash
-   npm install
-   ```
+1. Create a Supabase project.
+2. Apply database schema (pick one):
+   - SQL Editor: run `supabase/schema.sql`
+   - Terminal (linked project): run migrations with `supabase db push`
+3. In project settings, copy:
+   - `Project URL`
+   - `anon public key`
+4. For MVP signup/login without email verification friction:
+   - In Supabase dashboard -> `Authentication` -> `Providers` -> `Email`
+   - Turn off `Confirm email` (so random test emails work immediately)
+   - Optional via CLI config push (after login/link): set `auth.email.enable_confirmations = false` in `supabase/config.toml`, then run `supabase config push`
 
-2. Start the app
+### Terminal schema apply (PowerShell)
 
-   ```bash
-   npx expo start
-   ```
+```powershell
+cd D:\cheesehacks
 
-In the output, you'll find options to open the app in a
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*$' -or $_ -match '^\s*#') { return }
+  $k, $v = $_.Split('=', 2)
+  Set-Item -Path "Env:$k" -Value $v
+}
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+npx.cmd supabase login
+npx.cmd supabase link --project-ref $env:SUPABASE_PROJECT_REF --password $env:SUPABASE_DB_PASSWORD
+npx.cmd supabase db push --include-all
+npx.cmd supabase config push
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 2) Set environment variables
 
-## Learn more
+Create `.env` in the project root:
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Expo reads `EXPO_PUBLIC_*` variables at runtime.
 
-## Join the community
+## 3) Install + run
 
-Join our community of developers creating universal apps.
+```bash
+npm install
+npm.cmd run start -- --tunnel --clear --port 8082
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 4) Notes
+
+- If Supabase env vars are missing, the auth screen shows a config error.
+- All core state now comes from Supabase tables, not in-memory seed data.
+- Hallway owner-return QR flow is enforced in Supabase with short-lived DB tokens.
+- If you already ran older migrations, run `supabase db push --include-all` once.
