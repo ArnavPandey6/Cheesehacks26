@@ -8,7 +8,7 @@ import { fonts, getTheme } from '@/components/ui/theme';
 type LoopHeaderProps = {
   colorScheme: ColorSchemeName;
   karma: number;
-  rightIcon: ReactNode;
+  rightIcon?: ReactNode;
   subtitle?: string;
 };
 
@@ -27,7 +27,9 @@ export function LoopHeader({ colorScheme, karma, rightIcon, subtitle = 'communit
           <Sparkles size={11} color={theme.accentDeep} />
           <Text style={[styles.karmaChipText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>{karma} pts</Text>
         </View>
-        <View style={[styles.iconBox, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>{rightIcon}</View>
+        {rightIcon ? (
+          <View style={[styles.iconBox, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>{rightIcon}</View>
+        ) : null}
       </View>
     </View>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -13,9 +13,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
-import { Bell, Send, Sparkles, UserCircle } from 'lucide-react-native';
+import { MessageCircle, Send, Sparkles, UserCircle } from 'lucide-react-native';
 
 import { Atmosphere } from '@/components/ui/atmosphere';
 import { LoopHeader } from '@/components/ui/loop-header';
@@ -27,13 +27,28 @@ import { FeedPost, useStore } from '@/store/useStore';
 const isRemoteImageUrl = (value: string | undefined) => Boolean(value && /^https?:\/\//i.test(value));
 
 export default function HallwayScreen() {
-  const { feedPosts, addFeedPost, currentUser, claimFeedOffer, hasHydrated, backendError } = useStore();
+  const {
+    feedPosts,
+    addFeedPost,
+    currentUser,
+    claimFeedOffer,
+    hasHydrated,
+    backendError,
+    unreadChatCountsByPostId,
+    refreshUnreadChatCounts,
+  } = useStore();
+  const router = useRouter();
   const [newPostContent, setNewPostContent] = useState('');
   const [isOffer, setIsOffer] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const colorScheme = useColorScheme();
   const theme = getTheme(colorScheme);
   const entranceStyle = useEntranceAnimation(420, 16);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    void refreshUnreadChatCounts();
+  }, [currentUser, refreshUnreadChatCounts]);
 
   if (!hasHydrated) return null;
   if (!currentUser) return <Redirect href="../auth" />;
@@ -63,6 +78,10 @@ export default function HallwayScreen() {
     Alert.alert('Claimed', 'This item is now in your active hallway borrows.');
   };
 
+  const openPostChat = (postId: string) => {
+    router.push(`../chat/${postId}`);
+  };
+
   const renderOfferStatus = (item: FeedPost) => {
     if (!item.isOffer) return null;
     if (item.offerState === 'returned') {
@@ -90,6 +109,7 @@ export default function HallwayScreen() {
 
   const renderPost = ({ item }: { item: FeedPost }) => {
     const isOfferPost = item.isOffer;
+    const unreadCount = unreadChatCountsByPostId[item.id] ?? 0;
     return (
       <View style={[styles.postCard, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, shadowColor: theme.shadow }]}>
         <View style={styles.postHeader}>
@@ -124,7 +144,22 @@ export default function HallwayScreen() {
         </View>
         {isRemoteImageUrl(item.imageUrl) ? <Image source={{ uri: item.imageUrl }} style={styles.postImage} /> : null}
         <Text style={[styles.postContent, { color: theme.textMuted, fontFamily: fonts.body }]}>{item.content}</Text>
-        {renderOfferStatus(item)}
+        <View style={styles.postFooter}>
+          <View style={styles.offerStateWrap}>{renderOfferStatus(item)}</View>
+          <TouchableOpacity
+            style={[styles.chatBtn, { borderColor: theme.border, backgroundColor: theme.surfaceStrong }]}
+            onPress={() => openPostChat(item.id)}>
+            <MessageCircle size={14} color={theme.accentDeep} />
+            <Text style={[styles.chatBtnText, { color: theme.accentDeep, fontFamily: fonts.mono }]}>Message</Text>
+            {unreadCount > 0 ? (
+              <View style={[styles.unreadPill, { backgroundColor: theme.accentDeep }]}>
+                <Text style={[styles.unreadPillText, { color: theme.text, fontFamily: fonts.mono }]}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -136,7 +171,6 @@ export default function HallwayScreen() {
       <LoopHeader
         colorScheme={colorScheme}
         karma={currentUser.karma}
-        rightIcon={<Bell size={15} color={theme.textMuted} />}
         subtitle="hallway exchange"
       />
 
@@ -367,6 +401,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+  },
+  postFooter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  offerStateWrap: {
+    flex: 1,
+    marginRight: 12,
+  },
+  chatBtn: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  chatBtnText: {
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginLeft: 5,
+    textTransform: 'uppercase',
+  },
+  unreadPill: {
+    borderRadius: 999,
+    marginLeft: 7,
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  unreadPillText: {
+    fontSize: 9,
+    textAlign: 'center',
   },
   inputContainer: {
     borderTopLeftRadius: 18,

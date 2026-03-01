@@ -46,6 +46,15 @@ export type FeedPostInput = {
     imageUrl?: string;
 };
 
+export type FeedPostMessage = {
+    id: string;
+    postId: string;
+    senderUserId: string;
+    senderName: string;
+    body: string;
+    createdAt: string;
+};
+
 export type SignInInput = {
     email: string;
     password: string;
@@ -105,6 +114,20 @@ type RawFeedPostRow = {
     created_at: string;
 };
 
+type RawFeedPostMessageRow = {
+    id: string;
+    post_id: string;
+    sender_user_id: string;
+    body: string;
+    created_at: string;
+};
+
+type RawFeedPostChatReadRow = {
+    user_id: string;
+    post_id: string;
+    last_read_at: string;
+};
+
 interface AppState {
     hasHydrated: boolean;
     backendConfigured: boolean;
@@ -114,8 +137,15 @@ interface AppState {
     currentUser: User | null;
     vaultItems: VaultItem[];
     feedPosts: FeedPost[];
+    postMessagesByPostId: Record<string, FeedPostMessage[]>;
+    unreadChatCountsByPostId: Record<string, number>;
+    unreadChatTotal: number;
+    activeChatPostId: string | null;
     initialize: () => Promise<void>;
     refreshAllData: () => Promise<ActionResult>;
+    refreshUnreadChatCounts: () => Promise<ActionResult>;
+    markFeedPostChatRead: (postId: string) => Promise<ActionResult>;
+    setActiveChatPost: (postId: string | null) => void;
     signUp: (input: SignUpInput) => Promise<AuthResult>;
     signIn: (input: SignInInput) => Promise<AuthResult>;
     signOut: () => Promise<void>;
@@ -123,6 +153,8 @@ interface AppState {
     reserveItem: (itemId: string) => Promise<ActionResult>;
     returnItem: (itemId: string) => Promise<ActionResult>;
     addFeedPost: (post: FeedPostInput) => Promise<FeedPost | null>;
+    fetchFeedPostMessages: (postId: string) => Promise<ActionResult>;
+    sendFeedPostMessage: (postId: string, body: string) => Promise<ActionResult>;
     claimFeedOffer: (postId: string) => Promise<ActionResult>;
     createHallwayReturnCode: (postId: string) => Promise<HallwayReturnCodeResult>;
     markFeedOfferReturned: (postId: string, returnToken: string) => Promise<ActionResult>;
@@ -182,6 +214,96 @@ const mapFeedRow = (row: RawFeedPostRow, profilesById: Record<string, User>): Fe
     claimedAt: row.claimed_at,
     returnedAt: row.returned_at,
 });
+
+const mapFeedMessageRow = (
+    row: RawFeedPostMessageRow,
+    profilesById: Record<string, User>
+): FeedPostMessage => ({
+    id: row.id,
+    postId: row.post_id,
+    senderUserId: row.sender_user_id,
+    senderName: profilesById[row.sender_user_id]?.name ?? 'Neighbor',
+    body: row.body,
+    createdAt: row.created_at,
+});
+
+const isMissingChatTableError = (error: unknown) => {
+    let message = '';
+    if (error instanceof Error) {
+        message = error.message.toLowerCase();
+    } else if (typeof error === 'string') {
+        message = error.toLowerCase();
+    } else if (error && typeof error === 'object') {
+        const maybeMessage = (error as { message?: unknown }).message;
+        message = typeof maybeMessage === 'string' ? maybeMessage.toLowerCase() : '';
+    }
+    return (
+        (message.includes('does not exist') || message.includes('not found')) &&
+        (message.includes('feed_post_messages') || message.includes('feed_post_chat_reads'))
+    );
+};
+
+const loadUnreadChatCountsFromSupabase = async (sessionUserId: string, feedPosts: FeedPost[]) => {
+    const supabase = getSupabaseClient();
+    const relatedPostIds = new Set<string>();
+
+    feedPosts.forEach((post) => {
+        if (post.authorUserId === sessionUserId || post.claimedByUserId === sessionUserId) {
+            relatedPostIds.add(post.id);
+        }
+    });
+
+    const participantPostsResult = await supabase
+        .from('feed_post_messages')
+        .select('post_id')
+        .eq('sender_user_id', sessionUserId);
+
+    if (participantPostsResult.error) throw participantPostsResult.error;
+
+    (participantPostsResult.data ?? []).forEach((row) => {
+        const postId = (row as { post_id?: string | null }).post_id;
+        if (postId) relatedPostIds.add(postId);
+    });
+
+    const relevantPostIds = [...relatedPostIds];
+    if (relevantPostIds.length === 0) return { countsByPostId: {} as Record<string, number>, total: 0 };
+
+    const [chatReadsResult, incomingMessagesResult] = await Promise.all([
+        supabase
+            .from('feed_post_chat_reads')
+            .select('user_id,post_id,last_read_at')
+            .eq('user_id', sessionUserId)
+            .in('post_id', relevantPostIds),
+        supabase
+            .from('feed_post_messages')
+            .select('id,post_id,sender_user_id,body,created_at')
+            .in('post_id', relevantPostIds)
+            .neq('sender_user_id', sessionUserId)
+            .order('created_at', { ascending: true }),
+    ]);
+
+    if (chatReadsResult.error) throw chatReadsResult.error;
+    if (incomingMessagesResult.error) throw incomingMessagesResult.error;
+
+    const readsByPostId = ((chatReadsResult.data ?? []) as RawFeedPostChatReadRow[]).reduce<Record<string, string>>(
+        (accumulator, row) => {
+            accumulator[row.post_id] = row.last_read_at;
+            return accumulator;
+        },
+        {}
+    );
+
+    const countsByPostId: Record<string, number> = {};
+    ((incomingMessagesResult.data ?? []) as RawFeedPostMessageRow[]).forEach((row) => {
+        const lastReadAt = readsByPostId[row.post_id];
+        if (!lastReadAt || new Date(row.created_at).getTime() > new Date(lastReadAt).getTime()) {
+            countsByPostId[row.post_id] = (countsByPostId[row.post_id] ?? 0) + 1;
+        }
+    });
+
+    const total = Object.values(countsByPostId).reduce((sum, count) => sum + count, 0);
+    return { countsByPostId, total };
+};
 
 const getFriendlyErrorMessage = (error: unknown) => {
     if (error instanceof Error) return error.message;
@@ -326,6 +448,10 @@ export const useStore = create<AppState>((set, get) => ({
     currentUser: null,
     vaultItems: [],
     feedPosts: [],
+    postMessagesByPostId: {},
+    unreadChatCountsByPostId: {},
+    unreadChatTotal: 0,
+    activeChatPostId: null,
 
     initialize: async () => {
         if (get().hasHydrated) return;
@@ -340,6 +466,10 @@ export const useStore = create<AppState>((set, get) => ({
                 currentUser: null,
                 vaultItems: [],
                 feedPosts: [],
+                postMessagesByPostId: {},
+                unreadChatCountsByPostId: {},
+                unreadChatTotal: 0,
+                activeChatPostId: null,
             });
             return;
         }
@@ -374,6 +504,39 @@ export const useStore = create<AppState>((set, get) => ({
                     }, 250);
                 };
 
+                const handleChatMessageRealtime = (payload: { new: Record<string, unknown> | null }) => {
+                    const state = get();
+                    const sessionUserId = state.sessionUserId;
+                    if (!sessionUserId) return;
+
+                    const row = payload.new as Partial<RawFeedPostMessageRow> | null;
+                    if (!row?.post_id) {
+                        void get().refreshUnreadChatCounts();
+                        return;
+                    }
+
+                    const senderUserId = row.sender_user_id ?? '';
+                    if (senderUserId !== sessionUserId) {
+                        const post = state.feedPosts.find((item) => item.id === row.post_id);
+                        const hasParticipated = Boolean(
+                            state.postMessagesByPostId[row.post_id]?.some((message) => message.senderUserId === sessionUserId)
+                        );
+                        const shouldNotify = Boolean(
+                            post &&
+                            (
+                                post.authorUserId === sessionUserId ||
+                                post.claimedByUserId === sessionUserId ||
+                                hasParticipated
+                            )
+                        );
+                        if (shouldNotify && state.activeChatPostId === row.post_id) {
+                            void get().fetchFeedPostMessages(row.post_id);
+                        }
+                    }
+
+                    void get().refreshUnreadChatCounts();
+                };
+
                 supabase
                     .channel('relay-live-sync')
                     .on(
@@ -391,6 +554,11 @@ export const useStore = create<AppState>((set, get) => ({
                         { event: '*', schema: 'public', table: 'feed_posts' },
                         scheduleRefresh
                     )
+                    .on(
+                        'postgres_changes',
+                        { event: '*', schema: 'public', table: 'feed_post_messages' },
+                        handleChatMessageRealtime
+                    )
                     .subscribe();
             }
 
@@ -406,6 +574,10 @@ export const useStore = create<AppState>((set, get) => ({
                 currentUser: null,
                 vaultItems: [],
                 feedPosts: [],
+                postMessagesByPostId: {},
+                unreadChatCountsByPostId: {},
+                unreadChatTotal: 0,
+                activeChatPostId: null,
             });
         }
     },
@@ -424,6 +596,10 @@ export const useStore = create<AppState>((set, get) => ({
                 currentUser: null,
                 vaultItems: [],
                 feedPosts: [],
+                postMessagesByPostId: {},
+                unreadChatCountsByPostId: {},
+                unreadChatTotal: 0,
+                activeChatPostId: null,
             });
             return { ok: true };
         }
@@ -438,12 +614,78 @@ export const useStore = create<AppState>((set, get) => ({
                 vaultItems: data.vaultItems,
                 feedPosts: data.feedPosts,
             });
+            void get().refreshUnreadChatCounts();
             return { ok: true };
         } catch (error) {
             const reason = getFriendlyErrorMessage(error);
             set({ backendError: reason });
             return { ok: false, reason };
         }
+    },
+
+    refreshUnreadChatCounts: async () => {
+        if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
+
+        const sessionUserId = get().sessionUserId;
+        if (!sessionUserId) {
+            set({
+                unreadChatCountsByPostId: {},
+                unreadChatTotal: 0,
+            });
+            return { ok: true };
+        }
+
+        try {
+            const unread = await loadUnreadChatCountsFromSupabase(sessionUserId, get().feedPosts);
+            set({
+                unreadChatCountsByPostId: unread.countsByPostId,
+                unreadChatTotal: unread.total,
+            });
+            return { ok: true };
+        } catch (error) {
+            if (isMissingChatTableError(error)) {
+                set({
+                    unreadChatCountsByPostId: {},
+                    unreadChatTotal: 0,
+                });
+                return { ok: true };
+            }
+
+            return { ok: false, reason: getFriendlyErrorMessage(error) };
+        }
+    },
+
+    markFeedPostChatRead: async (postId: string) => {
+        if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
+        const currentUser = get().currentUser;
+        if (!currentUser) return { ok: false, reason: 'Please sign in first.' };
+
+        const normalizedPostId = postId.trim();
+        if (!normalizedPostId) return { ok: false, reason: 'Invalid post id.' };
+
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.from('feed_post_chat_reads').upsert(
+            {
+                user_id: currentUser.id,
+                post_id: normalizedPostId,
+                last_read_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,post_id' }
+        );
+
+        if (error) {
+            if (isMissingChatTableError(error)) return { ok: true };
+            return { ok: false, reason: error.message };
+        }
+
+        const refreshed = await get().refreshUnreadChatCounts();
+        if (!refreshed.ok) return refreshed;
+
+        return { ok: true };
+    },
+
+    setActiveChatPost: (postId: string | null) => {
+        set({ activeChatPostId: postId });
     },
 
     signUp: async (input: SignUpInput) => {
@@ -542,7 +784,14 @@ export const useStore = create<AppState>((set, get) => ({
 
     signOut: async () => {
         if (!isSupabaseConfigured) {
-            set({ sessionUserId: null, currentUser: null });
+            set({
+                sessionUserId: null,
+                currentUser: null,
+                postMessagesByPostId: {},
+                unreadChatCountsByPostId: {},
+                unreadChatTotal: 0,
+                activeChatPostId: null,
+            });
             return;
         }
 
@@ -553,6 +802,10 @@ export const useStore = create<AppState>((set, get) => ({
             currentUser: null,
             vaultItems: [],
             feedPosts: [],
+            postMessagesByPostId: {},
+            unreadChatCountsByPostId: {},
+            unreadChatTotal: 0,
+            activeChatPostId: null,
         });
     },
 
@@ -632,6 +885,69 @@ export const useStore = create<AppState>((set, get) => ({
         await get().refreshAllData();
         const created = get().feedPosts[0] ?? null;
         return created;
+    },
+
+    fetchFeedPostMessages: async (postId: string) => {
+        if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
+        if (!get().currentUser) return { ok: false, reason: 'Please sign in first.' };
+
+        const normalizedPostId = postId.trim();
+        if (!normalizedPostId) return { ok: false, reason: 'Invalid post id.' };
+
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase
+            .from('feed_post_messages')
+            .select('id,post_id,sender_user_id,body,created_at')
+            .eq('post_id', normalizedPostId)
+            .order('created_at', { ascending: true });
+
+        if (error) return { ok: false, reason: error.message };
+
+        const profilesById = get().users.reduce<Record<string, User>>((accumulator, user) => {
+            accumulator[user.id] = user;
+            return accumulator;
+        }, {});
+
+        const mappedMessages = ((data ?? []) as RawFeedPostMessageRow[]).map((row) =>
+            mapFeedMessageRow(row, profilesById)
+        );
+
+        set((state) => ({
+            postMessagesByPostId: {
+                ...state.postMessagesByPostId,
+                [normalizedPostId]: mappedMessages,
+            },
+        }));
+
+        return { ok: true };
+    },
+
+    sendFeedPostMessage: async (postId: string, body: string) => {
+        if (!isSupabaseConfigured) return { ok: false, reason: SUPABASE_MISSING_MESSAGE };
+        const currentUser = get().currentUser;
+        if (!currentUser) return { ok: false, reason: 'Please sign in first.' };
+
+        const normalizedPostId = postId.trim();
+        const normalizedBody = body.trim();
+        if (!normalizedPostId) return { ok: false, reason: 'Invalid post id.' };
+        if (!normalizedBody) return { ok: false, reason: 'Message cannot be empty.' };
+
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.from('feed_post_messages').insert({
+            post_id: normalizedPostId,
+            sender_user_id: currentUser.id,
+            body: normalizedBody,
+        });
+
+        if (error) return { ok: false, reason: error.message };
+
+        const refreshed = await get().fetchFeedPostMessages(normalizedPostId);
+        if (!refreshed.ok) return refreshed;
+
+        const readResult = await get().markFeedPostChatRead(normalizedPostId);
+        if (!readResult.ok) return readResult;
+
+        return { ok: true };
     },
 
     claimFeedOffer: async (postId: string) => {

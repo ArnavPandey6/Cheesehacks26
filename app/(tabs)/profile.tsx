@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Redirect } from 'expo-router';
-import { Camera as CameraIcon, LogOut, ScanQrCode, Sparkles, X } from 'lucide-react-native';
+import { Camera as CameraIcon, LogOut, Sparkles, X } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { Atmosphere } from '@/components/ui/atmosphere';
@@ -210,7 +210,6 @@ export default function ProfileScreen() {
       <LoopHeader
         colorScheme={colorScheme}
         karma={currentUser.karma}
-        rightIcon={<ScanQrCode size={15} color={theme.textMuted} />}
         subtitle="trust profile"
       />
 

@@ -44,6 +44,22 @@ create table if not exists public.feed_posts (
     created_at timestamptz not null default now()
 );
 
+create table if not exists public.feed_post_messages (
+    id uuid primary key default gen_random_uuid(),
+    post_id uuid not null references public.feed_posts(id) on delete cascade,
+    sender_user_id uuid not null references public.profiles(id) on delete cascade,
+    body text not null check (char_length(btrim(body)) > 0 and char_length(body) <= 1000),
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.feed_post_chat_reads (
+    user_id uuid not null references public.profiles(id) on delete cascade,
+    post_id uuid not null references public.feed_posts(id) on delete cascade,
+    last_read_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    primary key (user_id, post_id)
+);
+
 create table if not exists public.hallway_return_tokens (
     id uuid primary key default gen_random_uuid(),
     post_id uuid not null unique references public.feed_posts(id) on delete cascade,
@@ -58,11 +74,16 @@ create table if not exists public.hallway_return_tokens (
 create index if not exists idx_vault_items_status_created_at on public.vault_items(status, created_at desc);
 create index if not exists idx_feed_posts_created_at on public.feed_posts(created_at desc);
 create index if not exists idx_feed_posts_offer_state on public.feed_posts(is_offer, offer_state);
+create index if not exists idx_feed_post_messages_post_created_at on public.feed_post_messages(post_id, created_at asc);
+create index if not exists idx_feed_post_messages_sender_created_at on public.feed_post_messages(sender_user_id, created_at desc);
+create index if not exists idx_feed_post_chat_reads_user_last_read on public.feed_post_chat_reads(user_id, last_read_at desc);
 create index if not exists idx_hallway_return_tokens_borrower on public.hallway_return_tokens(borrower_user_id, expires_at desc);
 
 alter table public.profiles enable row level security;
 alter table public.vault_items enable row level security;
 alter table public.feed_posts enable row level security;
+alter table public.feed_post_messages enable row level security;
+alter table public.feed_post_chat_reads enable row level security;
 alter table public.hallway_return_tokens enable row level security;
 
 drop policy if exists profiles_select on public.profiles;
@@ -103,6 +124,32 @@ using (true);
 create policy feed_insert_author on public.feed_posts
 for insert to authenticated
 with check (author_user_id = auth.uid());
+
+drop policy if exists feed_post_messages_select on public.feed_post_messages;
+drop policy if exists feed_post_messages_insert_sender on public.feed_post_messages;
+create policy feed_post_messages_select on public.feed_post_messages
+for select to authenticated
+using (true);
+
+create policy feed_post_messages_insert_sender on public.feed_post_messages
+for insert to authenticated
+with check (sender_user_id = auth.uid());
+
+drop policy if exists feed_post_chat_reads_select_own on public.feed_post_chat_reads;
+drop policy if exists feed_post_chat_reads_insert_own on public.feed_post_chat_reads;
+drop policy if exists feed_post_chat_reads_update_own on public.feed_post_chat_reads;
+create policy feed_post_chat_reads_select_own on public.feed_post_chat_reads
+for select to authenticated
+using (user_id = auth.uid());
+
+create policy feed_post_chat_reads_insert_own on public.feed_post_chat_reads
+for insert to authenticated
+with check (user_id = auth.uid());
+
+create policy feed_post_chat_reads_update_own on public.feed_post_chat_reads
+for update to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
 
 drop policy if exists hallway_return_tokens_owner_or_borrower_select on public.hallway_return_tokens;
 create policy hallway_return_tokens_owner_or_borrower_select on public.hallway_return_tokens
@@ -472,6 +519,16 @@ begin
           and tablename = 'feed_posts'
     ) then
         alter publication supabase_realtime add table public.feed_posts;
+    end if;
+
+    if not exists (
+        select 1
+        from pg_publication_tables
+        where pubname = 'supabase_realtime'
+          and schemaname = 'public'
+          and tablename = 'feed_post_messages'
+    ) then
+        alter publication supabase_realtime add table public.feed_post_messages;
     end if;
 end;
 $$;
