@@ -1,20 +1,22 @@
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
 import { Home, Library, Camera, User } from 'lucide-react-native';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
 
+const ACTIVE_COLOR = '#343330';
+const INACTIVE_COLOR = '#9C9692';
+const ACTIVE_PIP = '#C5050C';
+
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const { hasHydrated, currentUser } = useStore();
 
   if (!hasHydrated) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <View style={styles.loaderWrap}>
+        <ActivityIndicator color="#C5050C" />
       </View>
     );
   }
@@ -26,45 +28,97 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#2f95dc', // A vibrant blue for interactive elements
-        tabBarInactiveTintColor: '#888',
+        tabBarActiveTintColor: ACTIVE_COLOR,
+        tabBarInactiveTintColor: INACTIVE_COLOR,
         headerShown: false,
         tabBarButton: HapticTab,
-        tabBarStyle: {
-          backgroundColor: colorScheme === 'dark' ? '#121212' : '#ffffff',
-          borderTopWidth: 0,
-          elevation: 10,
-          shadowOpacity: 0.1,
-        },
+        tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabItem,
+        tabBarLabelStyle: styles.tabLabel,
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Hallway',
-          tabBarIcon: ({ color }) => <Home size={24} color={color} />,
+          title: 'hallway',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
+              <Home size={16} color={focused ? '#FFFFFF' : color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="vault"
         options={{
-          title: 'Vault',
-          tabBarIcon: ({ color }) => <Library size={24} color={color} />,
+          title: 'vault',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
+              <Library size={16} color={focused ? '#FFFFFF' : color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="triage"
         options={{
-          title: 'Triage',
-          tabBarIcon: ({ color }) => <Camera size={24} color={color} />,
+          title: 'triage',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
+              <Camera size={16} color={focused ? '#FFFFFF' : color} />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <User size={24} color={color} />,
+          title: 'profile',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
+              <User size={16} color={focused ? '#FFFFFF' : color} />
+            </View>
+          ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  loaderWrap: {
+    alignItems: 'center',
+    backgroundColor: '#FFF5F0',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  tabBar: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderTopColor: '#EDE8E3',
+    borderTopWidth: 1,
+    elevation: 0,
+    height: 78,
+    paddingBottom: 10,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  tabItem: {
+    paddingVertical: 0,
+  },
+  tabLabel: {
+    fontFamily: 'Courier New',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginTop: 3,
+    textTransform: 'lowercase',
+  },
+  iconPip: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 30,
+    justifyContent: 'center',
+    width: 36,
+  },
+  iconPipActive: {
+    backgroundColor: ACTIVE_PIP,
+  },
+});

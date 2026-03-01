@@ -134,6 +134,20 @@ const SUPABASE_MISSING_MESSAGE =
     supabaseConfigError ?? 'Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.';
 const IMAGE_BUCKET = 'relay-images';
 
+const normalizeImageUrl = (value: string | null | undefined) => {
+    const candidate = value?.trim();
+    if (!candidate) return undefined;
+    if (/^https?:\/\//i.test(candidate)) return candidate;
+    if (!isSupabaseConfigured) return candidate;
+
+    try {
+        const { data } = getSupabaseClient().storage.from(IMAGE_BUCKET).getPublicUrl(candidate);
+        return data.publicUrl;
+    } catch {
+        return candidate;
+    }
+};
+
 const mapProfileRow = (row: RawProfileRow): User => ({
     id: row.id,
     name: row.name,
@@ -148,7 +162,7 @@ const mapVaultRow = (row: RawVaultItemRow): VaultItem => ({
     id: row.id,
     name: row.name,
     description: row.description,
-    imageUrl: row.image_url,
+    imageUrl: normalizeImageUrl(row.image_url) ?? row.image_url,
     status: row.status,
     minKarmaRequired: row.min_karma_required,
     reservedByUserId: row.reserved_by_user_id,
@@ -161,7 +175,7 @@ const mapFeedRow = (row: RawFeedPostRow, profilesById: Record<string, User>): Fe
     content: row.content,
     timestamp: row.created_at,
     isOffer: row.is_offer,
-    imageUrl: row.image_url ?? undefined,
+    imageUrl: normalizeImageUrl(row.image_url),
     offerState: row.offer_state,
     claimedByUserId: row.claimed_by_user_id,
     claimedByName: row.claimed_by_user_id ? profilesById[row.claimed_by_user_id]?.name ?? 'Neighbor' : null,

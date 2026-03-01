@@ -1,483 +1,611 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Image, Alert, SafeAreaView, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Redirect } from 'expo-router';
 import { useStore, VaultItem } from '../../store/useStore';
-import { Camera, Image as ImageIcon, Sparkles, Building, Users } from 'lucide-react-native';
+import { Building, Camera, Image as ImageIcon, MoreVertical, Sparkles, Users } from 'lucide-react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as ImagePicker from 'expo-image-picker';
 import { deriveBorrowRequirement, evaluateKarmaValue } from '@/store/karmaEvaluator';
 
 export default function TriageScreen() {
-    const { addKarma, adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
-    const colorScheme = useColorScheme();
-    const isDark = colorScheme === 'dark';
+  const { addKarma, adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
-    const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
-    const [itemName, setItemName] = useState('');
-    const [itemDesc, setItemDesc] = useState('');
-    const [imageUri, setImageUri] = useState<string | null>(null);
-    const [calculatedKarma, setCalculatedKarma] = useState(0);
-    const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
+  const [itemName, setItemName] = useState('');
+  const [itemDesc, setItemDesc] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [calculatedKarma, setCalculatedKarma] = useState(0);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
-    if (!hasHydrated) return null;
-    if (!currentUser) return <Redirect href="../auth" />;
+  if (!hasHydrated) return null;
+  if (!currentUser) return <Redirect href="../auth" />;
 
-    const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-        });
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+    });
 
-        if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
-        }
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission to access camera is required!');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const handleEvaluate = () => {
+    if (!itemName.trim() || !imageUri) {
+      Alert.alert('Missing Info', 'Please provide a name and add a photo before evaluating.');
+      return;
+    }
+    const evaluatedKarma = evaluateKarmaValue({
+      itemName,
+      itemDescription: itemDesc,
+      hasPhoto: Boolean(imageUri),
+    });
+    setCalculatedKarma(evaluatedKarma);
+    setStep('EVALUATED');
+  };
+
+  const resetFlow = () => {
+    setItemName('');
+    setItemDesc('');
+    setImageUri(null);
+    setCalculatedKarma(0);
+    setStep('INPUT');
+  };
+
+  const handleDonateToLibrary = async () => {
+    const newItem: VaultItem = {
+      id: `item_${Date.now()}`,
+      name: itemName,
+      description: itemDesc || 'A community donated item.',
+      imageUrl: imageUri!,
+      status: 'available',
+      minKarmaRequired: deriveBorrowRequirement(calculatedKarma),
     };
+    setIsSubmittingAction(true);
+    const adoptResult = await adoptItemToVault(newItem);
+    if (!adoptResult.ok) {
+      Alert.alert('Unable to Add Item', adoptResult.reason ?? backendError ?? 'Please try again.');
+      setIsSubmittingAction(false);
+      return;
+    }
 
-    const takePhoto = async () => {
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-        if (permissionResult.granted === false) {
-            Alert.alert("Permission to access camera is required!");
-            return;
-        }
+    const karmaResult = await addKarma(calculatedKarma);
+    if (!karmaResult.ok) {
+      Alert.alert('Item Added, Karma Failed', karmaResult.reason);
+      setIsSubmittingAction(false);
+      resetFlow();
+      return;
+    }
 
-        let result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-        });
+    setIsSubmittingAction(false);
+    Alert.alert('Adopted!', `Item added to The Vault. You earned +${calculatedKarma} Karma!`, [{ text: 'OK', onPress: resetFlow }]);
+  };
 
-        if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
-        }
-    };
+  const handleGiveToNeighbor = async () => {
+    const partialKarma = Math.floor(calculatedKarma / 2);
+    setIsSubmittingAction(true);
+    const post = await addFeedPost({
+      content: itemDesc
+        ? `Offering ${itemName}: ${itemDesc}`
+        : `Offering ${itemName}. Message me if you want to claim it.`,
+      isOffer: true,
+      imageUrl: imageUri ?? undefined,
+    });
+    if (!post) {
+      Alert.alert('Unable to Post Offer', backendError ?? 'Please try again.');
+      setIsSubmittingAction(false);
+      return;
+    }
 
-    const handleEvaluate = () => {
-        if (!itemName.trim() || !imageUri) {
-            Alert.alert('Missing Info', 'Please provide a name and add a photo before evaluating.');
-            return;
-        }
-        const evaluatedKarma = evaluateKarmaValue({
-            itemName,
-            itemDescription: itemDesc,
-            hasPhoto: Boolean(imageUri),
-        });
-        setCalculatedKarma(evaluatedKarma);
-        setStep('EVALUATED');
-    };
+    const karmaResult = await addKarma(partialKarma);
+    if (!karmaResult.ok) {
+      Alert.alert('Offer Posted, Karma Failed', karmaResult.reason);
+      setIsSubmittingAction(false);
+      resetFlow();
+      return;
+    }
 
-    const resetFlow = () => {
-        setItemName('');
-        setItemDesc('');
-        setImageUri(null);
-        setCalculatedKarma(0);
-        setStep('INPUT');
-    };
+    setIsSubmittingAction(false);
+    Alert.alert('Relayed!', `Item posted to Hallway as an offer. You earned +${partialKarma} Karma.`, [{ text: 'OK', onPress: resetFlow }]);
+  };
 
-    const handleDonateToLibrary = async () => {
-        const newItem: VaultItem = {
-            id: `item_${Date.now()}`,
-            name: itemName,
-            description: itemDesc || 'A community donated item.',
-            imageUrl: imageUri!,
-            status: 'available',
-            minKarmaRequired: deriveBorrowRequirement(calculatedKarma),
-        };
-        setIsSubmittingAction(true);
-        const adoptResult = await adoptItemToVault(newItem);
-        if (!adoptResult.ok) {
-            Alert.alert('Unable to Add Item', adoptResult.reason ?? backendError ?? 'Please try again.');
-            setIsSubmittingAction(false);
-            return;
-        }
+  return (
+    <SafeAreaView style={[styles.container, isDark && styles.bgDark]}>
+      <View style={[styles.topbar, isDark && styles.topbarDark]}>
+        <Text style={[styles.wordmark, isDark && styles.textLight]}>
+          l<Text style={styles.wordmarkEm}>oo</Text>p
+        </Text>
+        <View style={styles.karmaChip}>
+          <Sparkles size={11} color="#C5050C" />
+          <Text style={styles.karmaChipText}>{currentUser.karma} pts</Text>
+        </View>
+        <View style={[styles.iconBtn, isDark && styles.iconBtnDark]}>
+          <MoreVertical size={14} color={isDark ? '#B5ACA7' : '#9C9692'} />
+        </View>
+      </View>
 
-        const karmaResult = await addKarma(calculatedKarma);
-        if (!karmaResult.ok) {
-            Alert.alert('Item Added, Karma Failed', karmaResult.reason);
-            setIsSubmittingAction(false);
-            resetFlow();
-            return;
-        }
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={[styles.heroCard, isDark && styles.heroCardDark]}>
+            <Text style={styles.heroKicker}>Move-Out Mode Active</Text>
+            <Text style={styles.heroTitle}>
+              Relay it,{"\n"}
+              <Text style={styles.heroTitleEm}>not the landfill.</Text>
+            </Text>
+            <Text style={styles.heroDesc}>Scan an item, evaluate with AI, then route it to the right home.</Text>
+          </View>
 
-        setIsSubmittingAction(false);
-        Alert.alert('Adopted!', `Item added to The Vault. You earned +${calculatedKarma} Karma!`, [
-            { text: "OK", onPress: resetFlow }
-        ]);
-    };
+          {step === 'INPUT' ? (
+            <View>
+              <View style={styles.photoContainer}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.previewImageOnly} />
+                ) : (
+                  <View style={[styles.cameraBox, isDark && styles.cameraBoxDark]}>
+                    <Camera size={28} color={isDark ? '#B5ACA7' : '#9C9692'} />
+                    <Text style={styles.cameraText}>tap to add a photo for karma estimate</Text>
+                  </View>
+                )}
 
-    const handleGiveToNeighbor = async () => {
-        const partialKarma = Math.floor(calculatedKarma / 2);
-        setIsSubmittingAction(true);
-        const post = await addFeedPost({
-            content: itemDesc
-                ? `Offering ${itemName}: ${itemDesc}`
-                : `Offering ${itemName}. Message me if you want to claim it.`,
-            isOffer: true,
-            imageUrl: imageUri ?? undefined,
-        });
-        if (!post) {
-            Alert.alert('Unable to Post Offer', backendError ?? 'Please try again.');
-            setIsSubmittingAction(false);
-            return;
-        }
+                <View style={styles.photoActions}>
+                  <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={takePhoto}>
+                    <Camera size={18} color={isDark ? '#F9F3EF' : '#343330'} />
+                    <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Take Photo</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={pickImage}>
+                    <ImageIcon size={18} color={isDark ? '#F9F3EF' : '#343330'} />
+                    <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Library</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-        const karmaResult = await addKarma(partialKarma);
-        if (!karmaResult.ok) {
-            Alert.alert('Offer Posted, Karma Failed', karmaResult.reason);
-            setIsSubmittingAction(false);
-            resetFlow();
-            return;
-        }
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, isDark && styles.textLight]}>Item Name</Text>
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  placeholder="e.g. IKEA Floor Lamp"
+                  placeholderTextColor="#9C9692"
+                  value={itemName}
+                  onChangeText={setItemName}
+                />
+              </View>
 
-        setIsSubmittingAction(false);
-        Alert.alert('Relayed!', `Item posted to Hallway as an offer. You earned +${partialKarma} Karma.`, [
-            { text: "OK", onPress: resetFlow }
-        ]);
-    };
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, isDark && styles.textLight]}>Description (Optional)</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea, isDark && styles.inputDark]}
+                  placeholder="Condition, details, etc."
+                  placeholderTextColor="#9C9692"
+                  value={itemDesc}
+                  onChangeText={setItemDesc}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
 
-    return (
-        <SafeAreaView style={[styles.container, isDark && styles.bgDark]}>
-            <View style={styles.header}>
-                <Text style={[styles.title, isDark && styles.textLight]}>The Triage</Text>
-                <Text style={styles.subtitle}>Relay move-out items. Stop the waste.</Text>
+              <TouchableOpacity
+                style={[styles.evaluateBtn, (!itemName.trim() || !imageUri) && styles.evaluateBtnDisabled]}
+                onPress={handleEvaluate}>
+                <Sparkles size={18} color="#fff" />
+                <Text style={styles.evaluateBtnText}>Evaluate Karma Value</Text>
+              </TouchableOpacity>
             </View>
+          ) : (
+            <View>
+              <Text style={styles.sectionHead}>AI Detected</Text>
+              <View style={[styles.detectedRow, isDark && styles.detectedRowDark]}>
+                <View style={styles.detectedImageWrap}>
+                  <Image source={{ uri: imageUri! }} style={styles.previewImage} />
+                </View>
+                <View style={styles.detectedBody}>
+                  <Text style={styles.detectedTag}>AI identified</Text>
+                  <Text style={[styles.detectedName, isDark && styles.textLight]}>{itemName}</Text>
+                  {itemDesc ? <Text style={styles.detectedSub}>{itemDesc}</Text> : null}
+                  <View style={styles.karmaRow}>
+                    <Text style={styles.karmaNumber}>+{calculatedKarma}</Text>
+                    <Text style={styles.karmaLabel}>karma pts</Text>
+                  </View>
+                </View>
+              </View>
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.keyboardView}
-            >
-                <ScrollView contentContainerStyle={styles.content}>
-                    {step === 'INPUT' && (
-                        <View style={styles.inputState}>
+              <View style={styles.relayPair}>
+                <TouchableOpacity
+                  style={[styles.relayBtn, styles.relayBtnNeighbor, isSubmittingAction && styles.actionBtnDisabled]}
+                  onPress={() => void handleGiveToNeighbor()}
+                  disabled={isSubmittingAction}>
+                  <Users size={19} color="#343330" />
+                  <Text style={styles.relayTitleDark}>Give to Neighbor</Text>
+                  <Text style={styles.relaySubDark}>Post to Hallway. Half Karma.</Text>
+                </TouchableOpacity>
 
-                            <View style={styles.photoContainer}>
-                                {imageUri ? (
-                                    <Image source={{ uri: imageUri }} style={styles.previewImageOnly} />
-                                ) : (
-                                    <View style={styles.cameraBox}>
-                                        <Camera size={48} color={isDark ? "#555" : "#ccc"} />
-                                        <Text style={styles.cameraText}>Add a photo to get a Karma estimate</Text>
-                                    </View>
-                                )}
+                <TouchableOpacity
+                  style={[styles.relayBtn, styles.relayBtnLibrary, isSubmittingAction && styles.actionBtnDisabled]}
+                  onPress={() => void handleDonateToLibrary()}
+                  disabled={isSubmittingAction}>
+                  <Building size={19} color="#C5050C" />
+                  <Text style={styles.relayTitleRed}>Adopt to Library</Text>
+                  <Text style={styles.relaySub}>Give to building. Max Karma.</Text>
+                </TouchableOpacity>
+              </View>
 
-                                <View style={styles.photoActions}>
-                                    <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={takePhoto}>
-                                        <Camera size={20} color={isDark ? "#eee" : "#555"} />
-                                        <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Take Photo</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={pickImage}>
-                                        <ImageIcon size={20} color={isDark ? "#eee" : "#555"} />
-                                        <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Library</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={[styles.label, isDark && styles.textLight]}>Item Name</Text>
-                                <TextInput
-                                    style={[styles.input, isDark && styles.inputDark]}
-                                    placeholder="e.g. IKEA Floor Lamp"
-                                    placeholderTextColor="#888"
-                                    value={itemName}
-                                    onChangeText={setItemName}
-                                />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={[styles.label, isDark && styles.textLight]}>Description (Optional)</Text>
-                                <TextInput
-                                    style={[styles.input, styles.textArea, isDark && styles.inputDark]}
-                                    placeholder="Condition, details, etc."
-                                    placeholderTextColor="#888"
-                                    value={itemDesc}
-                                    onChangeText={setItemDesc}
-                                    multiline
-                                    numberOfLines={3}
-                                />
-                            </View>
-
-                            <TouchableOpacity
-                                style={[styles.evaluateBtn, (!itemName.trim() || !imageUri) && styles.evaluateBtnDisabled]}
-                                onPress={handleEvaluate}
-                            >
-                                <Sparkles size={20} color="#fff" />
-                                <Text style={styles.evaluateBtnText}>Evaluate Karma Value</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {step === 'EVALUATED' && (
-                        <View style={styles.evaluatedState}>
-                            <View style={styles.imageContainer}>
-                                <Image source={{ uri: imageUri! }} style={styles.previewImage} />
-                                <View style={styles.karmaBadge}>
-                                    <Sparkles size={16} color="#fff" />
-                                    <Text style={styles.karmaBadgeText}>+{calculatedKarma} Karma</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.detailsBox}>
-                                <Text style={[styles.itemNameResult, isDark && styles.textLight]}>{itemName}</Text>
-                                {itemDesc ? <Text style={styles.itemDescResult}>{itemDesc}</Text> : null}
-                            </View>
-
-                            <View style={styles.actionsBox}>
-                                <TouchableOpacity
-                                    style={[styles.actionBtn, styles.btnLibrary, isSubmittingAction && styles.actionBtnDisabled]}
-                                    onPress={() => void handleDonateToLibrary()}
-                                    disabled={isSubmittingAction}
-                                >
-                                    <Building size={24} color="#fff" style={styles.actionIcon} />
-                                    <View>
-                                        <Text style={styles.actionTitle}>Adopt to Library</Text>
-                                        <Text style={styles.actionSub}>Give to the building. Max Karma.</Text>
-                                    </View>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[styles.actionBtn, styles.btnNeighbor, isSubmittingAction && styles.actionBtnDisabled]}
-                                    onPress={() => void handleGiveToNeighbor()}
-                                    disabled={isSubmittingAction}
-                                >
-                                    <Users size={24} color="#333" style={styles.actionIcon} />
-                                    <View>
-                                        <Text style={[styles.actionTitle, { color: '#333' }]}>Give to Neighbor</Text>
-                                        <Text style={[styles.actionSub, { color: '#666' }]}>Post to Hallway. Half Karma.</Text>
-                                    </View>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={styles.cancelBtn} onPress={resetFlow}>
-                                    <Text style={styles.cancelBtnText}>Back to Edit</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    )}
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
+              <TouchableOpacity style={styles.cancelBtn} onPress={resetFlow}>
+                <Text style={styles.cancelBtnText}>Back to Edit</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f8f9fa',
-    },
-    keyboardView: {
-        flex: 1,
-    },
-    bgDark: {
-        backgroundColor: '#0a0a0a',
-    },
-    header: {
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 15,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: '#111',
-    },
-    textLight: {
-        color: '#eee',
-    },
-    subtitle: {
-        fontSize: 14,
-        color: '#666',
-        marginTop: 4,
-    },
-    content: {
-        padding: 20,
-        paddingBottom: 40,
-    },
-    inputState: {
-        flex: 1,
-    },
-    photoContainer: {
-        marginBottom: 20,
-    },
-    cameraBox: {
-        width: '100%',
-        height: 200,
-        borderWidth: 2,
-        borderColor: '#e0e0e0',
-        borderStyle: 'dashed',
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#fff',
-    },
-    cameraText: {
-        color: '#888',
-        marginTop: 12,
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    previewImageOnly: {
-        width: '100%',
-        height: 200,
-        borderRadius: 16,
-    },
-    photoActions: {
-        flexDirection: 'row',
-        gap: 12,
-        marginTop: 12,
-    },
-    photoBtn: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#fff',
-        paddingVertical: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#ddd',
-        gap: 8,
-    },
-    photoBtnDark: {
-        backgroundColor: '#1a1a1a',
-        borderColor: '#333',
-    },
-    photoBtnText: {
-        color: '#333',
-        fontWeight: '600',
-        fontSize: 14,
-    },
-    formGroup: {
-        marginBottom: 20,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#333',
-        marginBottom: 8,
-        marginLeft: 4,
-    },
-    input: {
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        fontSize: 16,
-        color: '#111',
-    },
-    inputDark: {
-        backgroundColor: '#1a1a1a',
-        borderColor: '#333',
-        color: '#fff',
-    },
-    textArea: {
-        height: 100,
-        textAlignVertical: 'top',
-    },
-    evaluateBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#2f95dc',
-        paddingVertical: 16,
-        borderRadius: 16,
-        marginTop: 10,
-        gap: 10,
-    },
-    evaluateBtnDisabled: {
-        backgroundColor: '#999',
-    },
-    evaluateBtnText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    evaluatedState: {
-        flex: 1,
-    },
-    imageContainer: {
-        width: '100%',
-        height: 250,
-        borderRadius: 20,
-        overflow: 'hidden',
-        marginBottom: 20,
-    },
-    previewImage: {
-        width: '100%',
-        height: '100%',
-    },
-    karmaBadge: {
-        position: 'absolute',
-        bottom: 16,
-        right: 16,
-        backgroundColor: '#9c27b0',
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 20,
-    },
-    karmaBadgeText: {
-        color: '#fff',
-        fontWeight: '800',
-        marginLeft: 6,
-    },
-    detailsBox: {
-        marginBottom: 30,
-    },
-    itemNameResult: {
-        fontSize: 24,
-        fontWeight: '800',
-        color: '#111',
-        marginBottom: 8,
-    },
-    itemDescResult: {
-        fontSize: 16,
-        color: '#666',
-        lineHeight: 24,
-    },
-    actionsBox: {
-        gap: 16,
-    },
-    actionBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        borderRadius: 16,
-        borderWidth: 1,
-    },
-    actionBtnDisabled: {
-        opacity: 0.6,
-    },
-    btnLibrary: {
-        backgroundColor: '#2f95dc',
-        borderColor: '#2f95dc',
-    },
-    btnNeighbor: {
-        backgroundColor: '#fff',
-        borderColor: '#ddd',
-    },
-    actionIcon: {
-        marginRight: 16,
-    },
-    actionTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: '#fff',
-    },
-    actionSub: {
-        fontSize: 13,
-        color: '#e0e0e0',
-        marginTop: 2,
-    },
-    cancelBtn: {
-        paddingVertical: 12,
-        alignItems: 'center',
-    },
-    cancelBtnText: {
-        color: '#888',
-        fontWeight: '600',
-        fontSize: 16,
-    },
+  container: {
+    backgroundColor: '#FFF5F0',
+    flex: 1,
+  },
+  bgDark: {
+    backgroundColor: '#171513',
+  },
+  textLight: {
+    color: '#F9F3EF',
+  },
+  topbar: {
+    alignItems: 'center',
+    borderBottomColor: '#EDE8E3',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  topbarDark: {
+    borderBottomColor: '#2B2724',
+  },
+  wordmark: {
+    color: '#343330',
+    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
+    fontSize: 30,
+    fontWeight: '700',
+    letterSpacing: -1,
+  },
+  wordmarkEm: {
+    color: '#C5050C',
+    fontStyle: 'italic',
+  },
+  karmaChip: {
+    alignItems: 'center',
+    backgroundColor: '#FFD9DA',
+    borderRadius: 20,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  karmaChipText: {
+    color: '#C5050C',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  iconBtn: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDE8E3',
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  iconBtnDark: {
+    backgroundColor: '#1F1B18',
+    borderColor: '#2B2724',
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  content: {
+    padding: 14,
+    paddingBottom: 30,
+  },
+  heroCard: {
+    backgroundColor: '#343330',
+    borderRadius: 16,
+    marginBottom: 12,
+    padding: 16,
+  },
+  heroCardDark: {
+    backgroundColor: '#1F1B18',
+    borderColor: '#2B2724',
+    borderWidth: 1,
+  },
+  heroKicker: {
+    color: '#F5BB9A',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 10,
+    letterSpacing: 1.4,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
+    fontSize: 27,
+    fontWeight: '700',
+    lineHeight: 30,
+  },
+  heroTitleEm: {
+    color: '#FFD9DA',
+    fontStyle: 'italic',
+  },
+  heroDesc: {
+    color: 'rgba(255,217,218,0.75)',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 11,
+    marginTop: 8,
+  },
+  photoContainer: {
+    marginBottom: 12,
+  },
+  cameraBox: {
+    alignItems: 'center',
+    backgroundColor: '#FFF5F0',
+    borderColor: '#EDE8E3',
+    borderRadius: 14,
+    borderStyle: 'dashed',
+    borderWidth: 1.5,
+    height: 180,
+    justifyContent: 'center',
+  },
+  cameraBoxDark: {
+    borderColor: '#2B2724',
+  },
+  cameraText: {
+    color: '#9C9692',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 11,
+    marginTop: 8,
+  },
+  previewImageOnly: {
+    borderRadius: 14,
+    height: 200,
+    width: '100%',
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  photoBtn: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDE8E3',
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 11,
+  },
+  photoBtnDark: {
+    backgroundColor: '#1F1B18',
+    borderColor: '#2B2724',
+  },
+  photoBtnText: {
+    color: '#343330',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  formGroup: {
+    marginBottom: 12,
+  },
+  label: {
+    color: '#343330',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 11,
+    letterSpacing: 0.4,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDE8E3',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#343330',
+    fontSize: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inputDark: {
+    backgroundColor: '#1F1B18',
+    borderColor: '#2B2724',
+    color: '#F9F3EF',
+  },
+  textArea: {
+    height: 92,
+    textAlignVertical: 'top',
+  },
+  evaluateBtn: {
+    alignItems: 'center',
+    backgroundColor: '#C5050C',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 4,
+    paddingVertical: 14,
+  },
+  evaluateBtnDisabled: {
+    backgroundColor: '#CFA4A6',
+  },
+  evaluateBtnText: {
+    color: '#fff',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sectionHead: {
+    color: '#9C9692',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 10,
+    letterSpacing: 1.3,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  detectedRow: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDE8E3',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  detectedRowDark: {
+    backgroundColor: '#1F1B18',
+    borderColor: '#2B2724',
+  },
+  detectedImageWrap: {
+    backgroundColor: '#FFD9DA',
+    width: 94,
+  },
+  previewImage: {
+    height: '100%',
+    width: '100%',
+  },
+  detectedBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  detectedTag: {
+    color: '#C5050C',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 9,
+    letterSpacing: 1.2,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+  },
+  detectedName: {
+    color: '#343330',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  detectedSub: {
+    color: '#9C9692',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  karmaRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 7,
+  },
+  karmaNumber: {
+    color: '#343330',
+    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
+    fontSize: 25,
+    fontWeight: '700',
+  },
+  karmaLabel: {
+    color: '#9C9692',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  relayPair: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  relayBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  relayBtnNeighbor: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDE8E3',
+  },
+  relayBtnLibrary: {
+    backgroundColor: '#FFD9DA',
+    borderColor: 'rgba(197,5,12,0.3)',
+  },
+  relayTitleDark: {
+    color: '#343330',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  relaySubDark: {
+    color: '#5C5956',
+    fontSize: 10,
+  },
+  relayTitleRed: {
+    color: '#C5050C',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  relaySub: {
+    color: '#9C9692',
+    fontSize: 10,
+  },
+  cancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  cancelBtnText: {
+    color: '#9C9692',
+    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionBtnDisabled: {
+    opacity: 0.6,
+  },
 });
