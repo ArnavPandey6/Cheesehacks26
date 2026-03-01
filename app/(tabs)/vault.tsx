@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,12 +12,16 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Platform,
 } from 'react-native';
 import { Redirect } from 'expo-router';
-import { useStore, VaultItem } from '../../store/useStore';
-import { AlertCircle, Library, Lock, Search, Sparkles, Unlock } from 'lucide-react-native';
+import { AlertCircle, Library, Lock, Search, Unlock } from 'lucide-react-native';
+
+import { Atmosphere } from '@/components/ui/atmosphere';
+import { LoopHeader } from '@/components/ui/loop-header';
+import { fonts, getTheme, radii } from '@/components/ui/theme';
+import { useEntranceAnimation } from '@/components/ui/use-entrance-animation';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useStore, VaultItem } from '@/store/useStore';
 
 const isRemoteImageUrl = (value: string) => /^https?:\/\//i.test(value);
 const categories = ['All', 'Cleaning', 'Tools', 'Kitchen', 'Moving', 'Furniture'];
@@ -23,7 +29,8 @@ const categories = ['All', 'Cleaning', 'Tools', 'Kitchen', 'Moving', 'Furniture'
 export default function VaultScreen() {
   const { vaultItems, reserveItem, currentUser, hasHydrated } = useStore();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const theme = getTheme(colorScheme);
+  const entranceStyle = useEntranceAnimation(420, 16);
 
   if (!hasHydrated) return null;
   if (!currentUser) return <Redirect href="../auth" />;
@@ -54,50 +61,88 @@ export default function VaultScreen() {
     const isAvailable = item.status === 'available';
     const hasEnoughKarma = currentUser.karma >= item.minKarmaRequired;
     const canRenderImage = isRemoteImageUrl(item.imageUrl);
-    const statusLabel = isAvailable ? 'Free' : item.status === 'reserved' ? 'Reserved' : 'On Loan';
+    const statusLabel = isAvailable ? 'Available' : item.status === 'reserved' ? 'Reserved' : 'On Loan';
 
     return (
-      <View style={[styles.card, isDark && styles.cardDark]}>
+      <View style={[styles.card, { backgroundColor: theme.surfaceStrong, borderColor: theme.border, shadowColor: theme.shadow }]}>
         {canRenderImage ? (
           <Image source={{ uri: item.imageUrl }} style={styles.image} />
         ) : (
-          <View style={[styles.image, styles.imageFallback]}>
-            <Library size={22} color="#C5050C" />
-            <Text style={styles.imageFallbackText}>Image unavailable</Text>
+          <View style={[styles.image, styles.imageFallback, { backgroundColor: theme.accentSoft }]}>
+            <Library size={22} color={theme.accentDeep} />
+            <Text style={[styles.imageFallbackText, { color: theme.textMuted, fontFamily: fonts.mono }]}>No image</Text>
           </View>
         )}
 
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
-            <Text style={[styles.itemName, isDark && styles.textLight]} numberOfLines={1}>
+            <Text style={[styles.itemName, { color: theme.text, fontFamily: fonts.body }]} numberOfLines={1}>
               {item.name}
             </Text>
-            <View style={[styles.statusChip, isAvailable ? styles.statusFree : styles.statusLoan]}>
-              <Text style={[styles.statusChipText, isAvailable ? styles.statusChipFreeText : styles.statusChipLoanText]}>
+            <View
+              style={[
+                styles.statusChip,
+                {
+                  backgroundColor: isAvailable ? theme.successSoft : theme.accentSoft,
+                  borderColor: isAvailable ? theme.success : theme.accentDeep,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.statusChipText,
+                  {
+                    color: isAvailable ? theme.success : theme.accentDeep,
+                    fontFamily: fonts.mono,
+                  },
+                ]}>
                 {statusLabel}
               </Text>
             </View>
           </View>
 
-          <Text style={styles.description} numberOfLines={2}>
+          <Text style={[styles.description, { color: theme.textMuted, fontFamily: fonts.body }]} numberOfLines={2}>
             {item.description}
           </Text>
 
           <View style={styles.bottomRow}>
             <View style={styles.karmaRow}>
-              <AlertCircle size={14} color={hasEnoughKarma ? '#2A6B3C' : '#C5050C'} />
-              <Text style={[styles.karmaText, !hasEnoughKarma && styles.karmaMissing]}>
-                Requires {item.minKarmaRequired} Karma
+              <AlertCircle size={14} color={hasEnoughKarma ? theme.success : theme.danger} />
+              <Text
+                style={[
+                  styles.karmaText,
+                  {
+                    color: hasEnoughKarma ? theme.textSoft : theme.danger,
+                    fontFamily: fonts.mono,
+                  },
+                ]}>
+                Requires {item.minKarmaRequired}
               </Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.reserveBtn, (!isAvailable || !hasEnoughKarma) && styles.reserveBtnDisabled]}
+              style={[
+                styles.reserveBtn,
+                {
+                  backgroundColor: isAvailable && hasEnoughKarma ? theme.accentDeep : theme.backgroundMuted,
+                  borderColor: theme.border,
+                },
+              ]}
               onPress={() => void handleReserve(item)}
               disabled={!isAvailable || !hasEnoughKarma}>
-              {isAvailable && hasEnoughKarma ? <Unlock size={14} color="#fff" /> : <Lock size={14} color="#aaa" />}
-              <Text style={[styles.reserveText, (!isAvailable || !hasEnoughKarma) && styles.reserveTextDisabled]}>
-                {!isAvailable ? 'In Use' : !hasEnoughKarma ? 'Karma Locked' : 'Reserve'}
+              {isAvailable && hasEnoughKarma ? (
+                <Unlock size={14} color={theme.text} />
+              ) : (
+                <Lock size={14} color={theme.textSoft} />
+              )}
+              <Text
+                style={[
+                  styles.reserveText,
+                  {
+                    color: isAvailable && hasEnoughKarma ? theme.text : theme.textSoft,
+                    fontFamily: fonts.mono,
+                  },
+                ]}>
+                {!isAvailable ? 'In Use' : !hasEnoughKarma ? 'Locked' : 'Reserve'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -107,195 +152,131 @@ export default function VaultScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.bgDark]}>
-      <View style={[styles.topbar, isDark && styles.topbarDark]}>
-        <Text style={[styles.wordmark, isDark && styles.textLight]}>
-          l<Text style={styles.wordmarkEm}>oo</Text>p
-        </Text>
-        <View style={styles.karmaChip}>
-          <Sparkles size={11} color="#C5050C" />
-          <Text style={styles.karmaChipText}>{currentUser.karma} pts</Text>
-        </View>
-        <View style={[styles.iconBtn, isDark && styles.iconBtnDark]}>
-          <Library size={14} color={isDark ? '#B5ACA7' : '#9C9692'} />
-        </View>
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Atmosphere colorScheme={colorScheme} />
 
-      <FlatList
-        data={vaultItems}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <>
-            <View style={[styles.searchBar, isDark && styles.searchBarDark]}>
-              <Search size={14} color="#9C9692" />
-              <TextInput
-                editable={false}
-                placeholder="Search building inventory..."
-                placeholderTextColor="#9C9692"
-                style={styles.searchInput}
-              />
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsRow}>
-              {categories.map((chip, index) => (
-                <View key={chip} style={[styles.chip, index === 0 && styles.chipActive]}>
-                  <Text style={[styles.chipText, index === 0 && styles.chipTextActive]}>{chip}</Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.sectionHead}>Building Library - {vaultItems.length} items</Text>
-          </>
-        }
+      <LoopHeader
+        colorScheme={colorScheme}
+        karma={currentUser.karma}
+        rightIcon={<Library size={15} color={theme.textMuted} />}
+        subtitle="vault inventory"
       />
+
+      <Animated.View style={[styles.listWrap, entranceStyle]}>
+        <FlatList
+          data={vaultItems}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <>
+              <View style={[styles.searchBar, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
+                <Search size={14} color={theme.textSoft} />
+                <TextInput
+                  editable={false}
+                  placeholder="Search building inventory..."
+                  placeholderTextColor={theme.textSoft}
+                  style={[styles.searchInput, { color: theme.textSoft, fontFamily: fonts.body }]}
+                />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+                {categories.map((chip, index) => (
+                  <View
+                    key={chip}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: index === 0 ? theme.surfaceInverted : theme.surfaceStrong,
+                        borderColor: index === 0 ? theme.surfaceInverted : theme.border,
+                      },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.chipText,
+                        {
+                          color: index === 0 ? theme.text : theme.textMuted,
+                          fontFamily: fonts.mono,
+                        },
+                      ]}>
+                      {chip}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+                Building Library - {vaultItems.length} items
+              </Text>
+            </>
+          }
+        />
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFF5F0',
     flex: 1,
   },
-  bgDark: {
-    backgroundColor: '#171513',
-  },
-  textLight: {
-    color: '#F9F3EF',
-  },
-  topbar: {
-    alignItems: 'center',
-    borderBottomColor: '#EDE8E3',
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  topbarDark: {
-    borderBottomColor: '#2B2724',
-  },
-  wordmark: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 30,
-    fontWeight: '700',
-    letterSpacing: -1,
-  },
-  wordmarkEm: {
-    color: '#C5050C',
-    fontStyle: 'italic',
-  },
-  karmaChip: {
-    alignItems: 'center',
-    backgroundColor: '#FFD9DA',
-    borderRadius: 20,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  karmaChipText: {
-    color: '#C5050C',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  iconBtn: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 10,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
-  iconBtnDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
+  listWrap: {
+    flex: 1,
   },
   listContainer: {
-    padding: 14,
-    paddingBottom: 28,
+    padding: 16,
+    paddingBottom: 32,
   },
   searchBar: {
     alignItems: 'center',
-    backgroundColor: '#FFF5F0',
-    borderColor: '#EDE8E3',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
     paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  searchBarDark: {
-    borderColor: '#2B2724',
+    paddingVertical: Platform.OS === 'ios' ? 10 : 9,
   },
   searchInput: {
-    color: '#9C9692',
     flex: 1,
     fontSize: 13,
     paddingVertical: 0,
   },
   chipsRow: {
-    gap: 6,
+    gap: 8,
     marginBottom: 12,
     paddingBottom: 2,
   },
   chip: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 6,
+    borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  chipActive: {
-    backgroundColor: '#343330',
-    borderColor: '#343330',
+    paddingVertical: 6,
   },
   chipText: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 11,
   },
-  chipTextActive: {
-    color: '#FFFFFF',
-  },
   sectionHead: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
-    letterSpacing: 1.3,
+    letterSpacing: 1.5,
     marginBottom: 8,
     textTransform: 'uppercase',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 14,
+    borderRadius: radii.md,
     borderWidth: 1,
+    elevation: 2,
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 10,
     overflow: 'hidden',
-  },
-  cardDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
   },
   image: {
-    backgroundColor: '#FFD9DA',
-    height: 108,
-    width: 82,
+    height: 114,
+    width: 88,
   },
   imageFallback: {
     alignItems: 'center',
@@ -303,9 +284,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   imageFallbackText: {
-    color: '#9C9692',
     fontSize: 9,
-    fontWeight: '600',
     marginTop: 6,
     textAlign: 'center',
   },
@@ -322,38 +301,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   itemName: {
-    color: '#343330',
     flex: 1,
     fontSize: 14,
-    fontWeight: '700',
   },
   statusChip: {
-    borderRadius: 6,
+    borderRadius: 999,
+    borderWidth: 1,
     paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  statusFree: {
-    backgroundColor: 'rgba(42,107,60,0.1)',
-  },
-  statusLoan: {
-    backgroundColor: '#FFD9DA',
+    paddingVertical: 3,
   },
   statusChipText: {
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
-    fontWeight: '600',
-  },
-  statusChipFreeText: {
-    color: '#2A6B3C',
-  },
-  statusChipLoanText: {
-    color: '#C5050C',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   description: {
-    color: '#5C5956',
     fontSize: 12,
     lineHeight: 17,
-    marginBottom: 8,
+    marginBottom: 9,
   },
   bottomRow: {
     alignItems: 'center',
@@ -367,33 +332,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   karmaText: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
     marginLeft: 5,
   },
-  karmaMissing: {
-    color: '#C5050C',
-  },
   reserveBtn: {
     alignItems: 'center',
-    backgroundColor: '#C5050C',
-    borderRadius: 8,
+    borderRadius: 999,
+    borderWidth: 1,
     flexDirection: 'row',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  reserveBtnDisabled: {
-    backgroundColor: '#EFEAE6',
-  },
   reserveText: {
-    color: '#fff',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
-    fontWeight: '700',
     marginLeft: 5,
-  },
-  reserveTextDisabled: {
-    color: '#AAA',
+    textTransform: 'uppercase',
   },
 });

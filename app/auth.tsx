@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -12,6 +13,10 @@ import {
 } from 'react-native';
 import { Redirect } from 'expo-router';
 
+import { Atmosphere } from '@/components/ui/atmosphere';
+import { LoopLogo } from '@/components/ui/loop-logo';
+import { fonts, getTheme, radii } from '@/components/ui/theme';
+import { useEntranceAnimation } from '@/components/ui/use-entrance-animation';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
 
@@ -19,8 +24,9 @@ type AuthMode = 'signin' | 'signup';
 
 export default function AuthScreen() {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const theme = getTheme(colorScheme);
   const { hasHydrated, currentUser, signIn, signUp, backendConfigured, backendError } = useStore();
+  const entranceStyle = useEntranceAnimation(500, 20);
 
   const [mode, setMode] = useState<AuthMode>('signin');
   const [name, setName] = useState('');
@@ -36,8 +42,9 @@ export default function AuthScreen() {
 
   if (!hasHydrated) {
     return (
-      <SafeAreaView style={[styles.container, isDark && styles.bgDark, styles.centerAll]}>
-        <Text style={[styles.title, isDark && styles.textLight]}>Loading Loop...</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }, styles.centerAll]}>
+        <Atmosphere colorScheme={colorScheme} />
+        <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Loading Loop...</Text>
       </SafeAreaView>
     );
   }
@@ -77,92 +84,186 @@ export default function AuthScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.bgDark]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Atmosphere colorScheme={colorScheme} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-        <View style={styles.content}>
-          <Text style={[styles.brand, isDark && styles.textLight]}>
-            l<Text style={styles.brandEm}>oo</Text>p
-          </Text>
-          <Text style={styles.subtitle}>Building circular economy</Text>
+        <Animated.View style={[styles.content, entranceStyle]}>
+          <View style={styles.logoWrap}>
+            <LoopLogo colorScheme={colorScheme} size="lg" showSubtitle />
+            <Text style={[styles.authCaption, { color: theme.textMuted, fontFamily: fonts.body }]}>
+              Trusted exchange for your building community
+            </Text>
+          </View>
 
-          <View style={[styles.card, isDark && styles.cardDark]}>
-            <Text style={[styles.cardTitle, isDark && styles.textLight]}>{title}</Text>
+          <View style={[styles.card, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
+            <View style={[styles.modeSwitchWrap, { backgroundColor: theme.backgroundMuted, borderColor: theme.border }]}>
+              <TouchableOpacity
+                style={[
+                  styles.modeSwitchBtn,
+                  mode === 'signin' && { backgroundColor: theme.surfaceStrong, borderColor: theme.borderStrong },
+                ]}
+                onPress={() => setMode('signin')}>
+                <Text
+                  style={[
+                    styles.modeSwitchText,
+                    {
+                      color: mode === 'signin' ? theme.text : theme.textMuted,
+                      fontFamily: fonts.mono,
+                    },
+                  ]}>
+                  Sign In
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modeSwitchBtn,
+                  mode === 'signup' && { backgroundColor: theme.surfaceStrong, borderColor: theme.borderStrong },
+                ]}
+                onPress={() => setMode('signup')}>
+                <Text
+                  style={[
+                    styles.modeSwitchText,
+                    {
+                      color: mode === 'signup' ? theme.text : theme.textMuted,
+                      fontFamily: fonts.mono,
+                    },
+                  ]}>
+                  Create Account
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.cardTitle, { color: theme.text, fontFamily: fonts.display }]}>{title}</Text>
 
             {mode === 'signup' ? (
               <>
                 <TextInput
-                  style={[styles.input, isDark && styles.inputDark]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      color: theme.text,
+                      fontFamily: fonts.body,
+                    },
+                  ]}
                   value={name}
                   onChangeText={setName}
                   placeholder="Full name"
-                  placeholderTextColor="#9C9692"
+                  placeholderTextColor={theme.textSoft}
                 />
                 <TextInput
-                  style={[styles.input, isDark && styles.inputDark]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      color: theme.text,
+                      fontFamily: fonts.body,
+                    },
+                  ]}
                   value={apartment}
                   onChangeText={setApartment}
                   placeholder="Apartment"
-                  placeholderTextColor="#9C9692"
+                  placeholderTextColor={theme.textSoft}
                 />
                 <TextInput
-                  style={[styles.input, isDark && styles.inputDark]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      color: theme.text,
+                      fontFamily: fonts.body,
+                    },
+                  ]}
                   value={unit}
                   onChangeText={setUnit}
                   placeholder="Unit / floor"
-                  placeholderTextColor="#9C9692"
+                  placeholderTextColor={theme.textSoft}
                 />
               </>
             ) : null}
 
             <TextInput
-              style={[styles.input, isDark && styles.inputDark]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                  color: theme.text,
+                  fontFamily: fonts.body,
+                },
+              ]}
               value={email}
               onChangeText={setEmail}
               placeholder="Email"
-              placeholderTextColor="#9C9692"
+              placeholderTextColor={theme.textSoft}
               autoCapitalize="none"
               keyboardType="email-address"
             />
             <TextInput
-              style={[styles.input, isDark && styles.inputDark]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                  color: theme.text,
+                  fontFamily: fonts.body,
+                },
+              ]}
               value={password}
               onChangeText={setPassword}
               placeholder="Password"
-              placeholderTextColor="#9C9692"
+              placeholderTextColor={theme.textSoft}
               secureTextEntry
             />
 
             {mode === 'signup' ? (
               <TextInput
-                style={[styles.input, isDark && styles.inputDark]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    color: theme.text,
+                    fontFamily: fonts.body,
+                  },
+                ]}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 placeholder="Confirm password"
-                placeholderTextColor="#9C9692"
+                placeholderTextColor={theme.textSoft}
                 secureTextEntry
               />
             ) : null}
 
             {!backendConfigured ? (
-              <Text style={styles.backendErrorText}>{backendError ?? 'Supabase configuration missing.'}</Text>
+              <Text style={[styles.backendErrorText, { color: theme.danger }]}>{backendError ?? 'Supabase configuration missing.'}</Text>
             ) : null}
 
             <TouchableOpacity
-              style={[styles.primaryBtn, isSubmitting && styles.primaryBtnDisabled]}
+              style={[
+                styles.primaryBtn,
+                { backgroundColor: theme.accentDeep },
+                isSubmitting && { backgroundColor: theme.borderStrong },
+              ]}
               onPress={handleSubmit}
               disabled={isSubmitting}>
-              <Text style={styles.primaryBtnText}>{isSubmitting ? 'Please wait...' : actionText}</Text>
+              <Text style={[styles.primaryBtnText, { color: theme.text, fontFamily: fonts.mono }]}>
+                {isSubmitting ? 'Please wait...' : actionText}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.switchBtn}
               onPress={() => setMode((previous) => (previous === 'signin' ? 'signup' : 'signin'))}>
-              <Text style={styles.switchBtnText}>
+              <Text style={[styles.switchBtnText, { color: theme.textMuted, fontFamily: fonts.body }]}>
                 {mode === 'signin' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -170,11 +271,7 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFF5F0',
     flex: 1,
-  },
-  bgDark: {
-    backgroundColor: '#171513',
   },
   keyboardView: {
     flex: 1,
@@ -182,90 +279,71 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: 22,
   },
   centerAll: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  textLight: {
-    color: '#F9F3EF',
+  logoWrap: {
+    marginBottom: 22,
   },
-  brand: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 64,
-    fontWeight: '700',
-    letterSpacing: -2,
-    lineHeight: 68,
-    marginBottom: 6,
-  },
-  brandEm: {
-    color: '#C5050C',
-    fontStyle: 'italic',
-  },
-  subtitle: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 11,
-    letterSpacing: 1.6,
-    marginBottom: 20,
-    textTransform: 'uppercase',
+  authCaption: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 10,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 16,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    padding: 16,
+    padding: 18,
   },
-  cardDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
+  modeSwitchWrap: {
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    padding: 4,
+  },
+  modeSwitchBtn: {
+    alignItems: 'center',
+    borderColor: 'transparent',
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 8,
+  },
+  modeSwitchText: {
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
   },
   cardTitle: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 12,
+    fontSize: 26,
+    marginBottom: 14,
   },
   input: {
-    backgroundColor: '#FFF5F0',
-    borderColor: '#EDE8E3',
     borderRadius: 10,
     borderWidth: 1,
-    color: '#343330',
-    marginBottom: 10,
+    fontSize: 14,
+    marginBottom: 12,
     paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  inputDark: {
-    backgroundColor: '#171513',
-    borderColor: '#2B2724',
-    color: '#F9F3EF',
+    paddingVertical: 12,
   },
   primaryBtn: {
     alignItems: 'center',
-    backgroundColor: '#C5050C',
     borderRadius: 10,
     marginTop: 4,
     paddingVertical: 13,
   },
-  primaryBtnDisabled: {
-    backgroundColor: '#CFA4A6',
-  },
   primaryBtnText: {
-    color: '#fff',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 13,
-    fontWeight: '800',
     letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   backendErrorText: {
-    color: '#C5050C',
     fontSize: 12,
-    fontWeight: '600',
     marginBottom: 10,
   },
   switchBtn: {
@@ -273,14 +351,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   switchBtnText: {
-    color: '#C5050C',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 12,
-    fontWeight: '600',
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#343330',
   },
 });

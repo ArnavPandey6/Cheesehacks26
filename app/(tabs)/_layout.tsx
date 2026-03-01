@@ -4,19 +4,19 @@ import { Home, Library, Camera, User } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
+import { fonts, getTheme } from '@/components/ui/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStore } from '@/store/useStore';
-
-const ACTIVE_COLOR = '#343330';
-const INACTIVE_COLOR = '#9C9692';
-const ACTIVE_PIP = '#C5050C';
 
 export default function TabLayout() {
   const { hasHydrated, currentUser } = useStore();
+  const colorScheme = useColorScheme();
+  const theme = getTheme(colorScheme);
 
   if (!hasHydrated) {
     return (
-      <View style={styles.loaderWrap}>
-        <ActivityIndicator color="#C5050C" />
+      <View style={[styles.loaderWrap, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.accentDeep} />
       </View>
     );
   }
@@ -28,21 +28,33 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: ACTIVE_COLOR,
-        tabBarInactiveTintColor: INACTIVE_COLOR,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textSoft,
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarButton: HapticTab,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            backgroundColor: theme.tabGlass,
+            borderColor: theme.border,
+            shadowColor: theme.shadow,
+          },
+        ],
         tabBarItemStyle: styles.tabItem,
-        tabBarLabelStyle: styles.tabLabel,
+        tabBarLabelStyle: [styles.tabLabel, { fontFamily: fonts.mono }],
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'hallway',
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
-              <Home size={16} color={focused ? '#FFFFFF' : color} />
+            <View
+              style={[
+                styles.iconPip,
+                focused && { backgroundColor: theme.accentSoft },
+              ]}>
+              <Home size={18} color={color} />
             </View>
           ),
         }}
@@ -52,8 +64,12 @@ export default function TabLayout() {
         options={{
           title: 'vault',
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
-              <Library size={16} color={focused ? '#FFFFFF' : color} />
+            <View
+              style={[
+                styles.iconPip,
+                focused && { backgroundColor: theme.accentSoft },
+              ]}>
+              <Library size={18} color={color} />
             </View>
           ),
         }}
@@ -63,8 +79,12 @@ export default function TabLayout() {
         options={{
           title: 'triage',
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
-              <Camera size={16} color={focused ? '#FFFFFF' : color} />
+            <View
+              style={[
+                styles.iconPip,
+                focused && { backgroundColor: theme.accentSoft },
+              ]}>
+              <Camera size={18} color={color} />
             </View>
           ),
         }}
@@ -74,8 +94,12 @@ export default function TabLayout() {
         options={{
           title: 'profile',
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconPip, focused && styles.iconPipActive]}>
-              <User size={16} color={focused ? '#FFFFFF' : color} />
+            <View
+              style={[
+                styles.iconPip,
+                focused && { backgroundColor: theme.accentSoft },
+              ]}>
+              <User size={18} color={color} />
             </View>
           ),
         }}
@@ -87,38 +111,32 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   loaderWrap: {
     alignItems: 'center',
-    backgroundColor: '#FFF5F0',
     flex: 1,
     justifyContent: 'center',
   },
   tabBar: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderTopColor: '#EDE8E3',
     borderTopWidth: 1,
     elevation: 0,
-    height: 78,
-    paddingBottom: 10,
-    paddingHorizontal: 8,
-    paddingTop: 8,
+    height: 70,
+    paddingBottom: 8,
+    paddingHorizontal: 0,
+    paddingTop: 6,
+    position: 'relative',
   },
   tabItem: {
     paddingVertical: 0,
   },
   tabLabel: {
-    fontFamily: 'Courier New',
     fontSize: 10,
-    letterSpacing: 0.6,
-    marginTop: 3,
+    letterSpacing: 0.4,
+    marginTop: 1,
     textTransform: 'lowercase',
   },
   iconPip: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 10,
     height: 30,
     justifyContent: 'center',
-    width: 36,
-  },
-  iconPipActive: {
-    backgroundColor: ACTIVE_PIP,
+    width: 34,
   },
 });

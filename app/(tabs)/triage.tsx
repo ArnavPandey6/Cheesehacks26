@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Animated,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,16 +14,22 @@ import {
   View,
 } from 'react-native';
 import { Redirect } from 'expo-router';
-import { useStore, VaultItem } from '../../store/useStore';
 import { Building, Camera, Image as ImageIcon, MoreVertical, Sparkles, Users } from 'lucide-react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as ImagePicker from 'expo-image-picker';
+
+import { Atmosphere } from '@/components/ui/atmosphere';
+import { LoopHeader } from '@/components/ui/loop-header';
+import { fonts, getTheme, radii } from '@/components/ui/theme';
+import { useEntranceAnimation } from '@/components/ui/use-entrance-animation';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { deriveBorrowRequirement, evaluateKarmaValue } from '@/store/karmaEvaluator';
+import { useStore, VaultItem } from '@/store/useStore';
 
 export default function TriageScreen() {
   const { addKarma, adoptItemToVault, addFeedPost, currentUser, hasHydrated, backendError } = useStore();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const theme = getTheme(colorScheme);
+  const entranceStyle = useEntranceAnimation(440, 20);
 
   const [step, setStep] = useState<'INPUT' | 'EVALUATED'>('INPUT');
   const [itemName, setItemName] = useState('');
@@ -39,7 +46,7 @@ export default function TriageScreen() {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.5,
+      quality: 0.6,
     });
 
     if (!result.canceled) {
@@ -57,7 +64,7 @@ export default function TriageScreen() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.5,
+      quality: 0.6,
     });
 
     if (!result.canceled) {
@@ -145,130 +152,173 @@ export default function TriageScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.bgDark]}>
-      <View style={[styles.topbar, isDark && styles.topbarDark]}>
-        <Text style={[styles.wordmark, isDark && styles.textLight]}>
-          l<Text style={styles.wordmarkEm}>oo</Text>p
-        </Text>
-        <View style={styles.karmaChip}>
-          <Sparkles size={11} color="#C5050C" />
-          <Text style={styles.karmaChipText}>{currentUser.karma} pts</Text>
-        </View>
-        <View style={[styles.iconBtn, isDark && styles.iconBtnDark]}>
-          <MoreVertical size={14} color={isDark ? '#B5ACA7' : '#9C9692'} />
-        </View>
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Atmosphere colorScheme={colorScheme} />
+
+      <LoopHeader
+        colorScheme={colorScheme}
+        karma={currentUser.karma}
+        rightIcon={<MoreVertical size={15} color={theme.textMuted} />}
+        subtitle="triage engine"
+      />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={[styles.heroCard, isDark && styles.heroCardDark]}>
-            <Text style={styles.heroKicker}>Move-Out Mode Active</Text>
-            <Text style={styles.heroTitle}>
-              Relay it,{"\n"}
-              <Text style={styles.heroTitleEm}>not the landfill.</Text>
-            </Text>
-            <Text style={styles.heroDesc}>Scan an item, evaluate with AI, then route it to the right home.</Text>
-          </View>
-
-          {step === 'INPUT' ? (
-            <View>
-              <View style={styles.photoContainer}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.previewImageOnly} />
-                ) : (
-                  <View style={[styles.cameraBox, isDark && styles.cameraBoxDark]}>
-                    <Camera size={28} color={isDark ? '#B5ACA7' : '#9C9692'} />
-                    <Text style={styles.cameraText}>tap to add a photo for karma estimate</Text>
-                  </View>
-                )}
-
-                <View style={styles.photoActions}>
-                  <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={takePhoto}>
-                    <Camera size={18} color={isDark ? '#F9F3EF' : '#343330'} />
-                    <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Take Photo</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.photoBtn, isDark && styles.photoBtnDark]} onPress={pickImage}>
-                    <ImageIcon size={18} color={isDark ? '#F9F3EF' : '#343330'} />
-                    <Text style={[styles.photoBtnText, isDark && styles.textLight]}>Library</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, isDark && styles.textLight]}>Item Name</Text>
-                <TextInput
-                  style={[styles.input, isDark && styles.inputDark]}
-                  placeholder="e.g. IKEA Floor Lamp"
-                  placeholderTextColor="#9C9692"
-                  value={itemName}
-                  onChangeText={setItemName}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, isDark && styles.textLight]}>Description (Optional)</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea, isDark && styles.inputDark]}
-                  placeholder="Condition, details, etc."
-                  placeholderTextColor="#9C9692"
-                  value={itemDesc}
-                  onChangeText={setItemDesc}
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.evaluateBtn, (!itemName.trim() || !imageUri) && styles.evaluateBtnDisabled]}
-                onPress={handleEvaluate}>
-                <Sparkles size={18} color="#fff" />
-                <Text style={styles.evaluateBtnText}>Evaluate Karma Value</Text>
-              </TouchableOpacity>
+        <Animated.View style={[styles.contentWrap, entranceStyle]}>
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <View style={[styles.heroCard, { backgroundColor: theme.surfaceInverted, borderColor: theme.borderStrong }]}>
+              <Text style={[styles.heroKicker, { color: theme.textSoft, fontFamily: fonts.mono }]}>Move-Out Mode</Text>
+              <Text style={[styles.heroTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                Route it to a
+                {'\n'}
+                better home.
+              </Text>
+              <Text style={[styles.heroDesc, { color: theme.textMuted, fontFamily: fonts.body }]}>
+                Scan an item, score its karma value, then relay it to neighbors or the building vault.
+              </Text>
             </View>
-          ) : (
-            <View>
-              <Text style={styles.sectionHead}>AI Detected</Text>
-              <View style={[styles.detectedRow, isDark && styles.detectedRowDark]}>
-                <View style={styles.detectedImageWrap}>
-                  <Image source={{ uri: imageUri! }} style={styles.previewImage} />
-                </View>
-                <View style={styles.detectedBody}>
-                  <Text style={styles.detectedTag}>AI identified</Text>
-                  <Text style={[styles.detectedName, isDark && styles.textLight]}>{itemName}</Text>
-                  {itemDesc ? <Text style={styles.detectedSub}>{itemDesc}</Text> : null}
-                  <View style={styles.karmaRow}>
-                    <Text style={styles.karmaNumber}>+{calculatedKarma}</Text>
-                    <Text style={styles.karmaLabel}>karma pts</Text>
+
+            {step === 'INPUT' ? (
+              <View>
+                <View style={styles.photoContainer}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.previewImageOnly} />
+                  ) : (
+                    <View style={[styles.cameraBox, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
+                      <Camera size={28} color={theme.textMuted} />
+                      <Text style={[styles.cameraText, { color: theme.textSoft, fontFamily: fonts.mono }]}>
+                        add a photo for karma estimate
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity
+                      style={[styles.photoBtn, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}
+                      onPress={takePhoto}>
+                      <Camera size={18} color={theme.text} />
+                      <Text style={[styles.photoBtnText, { color: theme.text, fontFamily: fonts.body }]}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.photoBtn, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}
+                      onPress={pickImage}>
+                      <ImageIcon size={18} color={theme.text} />
+                      <Text style={[styles.photoBtnText, { color: theme.text, fontFamily: fonts.body }]}>Library</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.relayPair}>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Item Name</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.surfaceStrong,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        fontFamily: fonts.body,
+                      },
+                    ]}
+                    placeholder="e.g. IKEA floor lamp"
+                    placeholderTextColor={theme.textSoft}
+                    value={itemName}
+                    onChangeText={setItemName}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={[styles.label, { color: theme.textMuted, fontFamily: fonts.mono }]}>Description (Optional)</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.textArea,
+                      {
+                        backgroundColor: theme.surfaceStrong,
+                        borderColor: theme.border,
+                        color: theme.text,
+                        fontFamily: fonts.body,
+                      },
+                    ]}
+                    placeholder="Condition, details, etc."
+                    placeholderTextColor={theme.textSoft}
+                    value={itemDesc}
+                    onChangeText={setItemDesc}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
                 <TouchableOpacity
-                  style={[styles.relayBtn, styles.relayBtnNeighbor, isSubmittingAction && styles.actionBtnDisabled]}
-                  onPress={() => void handleGiveToNeighbor()}
-                  disabled={isSubmittingAction}>
-                  <Users size={19} color="#343330" />
-                  <Text style={styles.relayTitleDark}>Give to Neighbor</Text>
-                  <Text style={styles.relaySubDark}>Post to Hallway. Half Karma.</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.relayBtn, styles.relayBtnLibrary, isSubmittingAction && styles.actionBtnDisabled]}
-                  onPress={() => void handleDonateToLibrary()}
-                  disabled={isSubmittingAction}>
-                  <Building size={19} color="#C5050C" />
-                  <Text style={styles.relayTitleRed}>Adopt to Library</Text>
-                  <Text style={styles.relaySub}>Give to building. Max Karma.</Text>
+                  style={[
+                    styles.evaluateBtn,
+                    { backgroundColor: !itemName.trim() || !imageUri ? theme.borderStrong : theme.accentDeep },
+                  ]}
+                  onPress={handleEvaluate}>
+                  <Sparkles size={18} color={theme.text} />
+                  <Text style={[styles.evaluateBtnText, { color: theme.text, fontFamily: fonts.mono }]}>
+                    Evaluate Karma Value
+                  </Text>
                 </TouchableOpacity>
               </View>
+            ) : (
+              <View>
+                <Text style={[styles.sectionHead, { color: theme.textSoft, fontFamily: fonts.mono }]}>AI Detected</Text>
+                <View style={[styles.detectedRow, { backgroundColor: theme.surfaceStrong, borderColor: theme.border }]}>
+                  <View style={[styles.detectedImageWrap, { backgroundColor: theme.accentSoft }]}>
+                    <Image source={{ uri: imageUri! }} style={styles.previewImage} />
+                  </View>
+                  <View style={styles.detectedBody}>
+                    <Text style={[styles.detectedTag, { color: theme.accentDeep, fontFamily: fonts.mono }]}>AI identified</Text>
+                    <Text style={[styles.detectedName, { color: theme.text, fontFamily: fonts.body }]}>{itemName}</Text>
+                    {itemDesc ? <Text style={[styles.detectedSub, { color: theme.textMuted, fontFamily: fonts.body }]}>{itemDesc}</Text> : null}
+                    <View style={styles.karmaRow}>
+                      <Text style={[styles.karmaNumber, { color: theme.text, fontFamily: fonts.display }]}>+{calculatedKarma}</Text>
+                      <Text style={[styles.karmaLabel, { color: theme.textSoft, fontFamily: fonts.mono }]}>karma pts</Text>
+                    </View>
+                  </View>
+                </View>
 
-              <TouchableOpacity style={styles.cancelBtn} onPress={resetFlow}>
-                <Text style={styles.cancelBtnText}>Back to Edit</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </ScrollView>
+                <View style={styles.relayPair}>
+                  <TouchableOpacity
+                    style={[
+                      styles.relayBtn,
+                      {
+                        backgroundColor: theme.surfaceStrong,
+                        borderColor: theme.border,
+                        opacity: isSubmittingAction ? 0.7 : 1,
+                      },
+                    ]}
+                    onPress={() => void handleGiveToNeighbor()}
+                    disabled={isSubmittingAction}>
+                    <Users size={19} color={theme.text} />
+                    <Text style={[styles.relayTitle, { color: theme.text, fontFamily: fonts.body }]}>Give to Neighbor</Text>
+                    <Text style={[styles.relaySub, { color: theme.textSoft, fontFamily: fonts.body }]}>Post to Hallway, half karma.</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.relayBtn,
+                      {
+                        backgroundColor: theme.accentSoft,
+                        borderColor: theme.accent,
+                        opacity: isSubmittingAction ? 0.7 : 1,
+                      },
+                    ]}
+                    onPress={() => void handleDonateToLibrary()}
+                    disabled={isSubmittingAction}>
+                    <Building size={19} color={theme.accentDeep} />
+                    <Text style={[styles.relayTitle, { color: theme.accentDeep, fontFamily: fonts.body }]}>Adopt to Vault</Text>
+                    <Text style={[styles.relaySub, { color: theme.warning, fontFamily: fonts.body }]}>Give to building, max karma.</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.cancelBtn} onPress={resetFlow}>
+                  <Text style={[styles.cancelBtnText, { color: theme.textMuted, fontFamily: fonts.mono }]}>Back to Edit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -276,135 +326,58 @@ export default function TriageScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFF5F0',
     flex: 1,
-  },
-  bgDark: {
-    backgroundColor: '#171513',
-  },
-  textLight: {
-    color: '#F9F3EF',
-  },
-  topbar: {
-    alignItems: 'center',
-    borderBottomColor: '#EDE8E3',
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  topbarDark: {
-    borderBottomColor: '#2B2724',
-  },
-  wordmark: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 30,
-    fontWeight: '700',
-    letterSpacing: -1,
-  },
-  wordmarkEm: {
-    color: '#C5050C',
-    fontStyle: 'italic',
-  },
-  karmaChip: {
-    alignItems: 'center',
-    backgroundColor: '#FFD9DA',
-    borderRadius: 20,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  karmaChipText: {
-    color: '#C5050C',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  iconBtn: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 10,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
-  iconBtnDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
   },
   keyboardView: {
     flex: 1,
   },
+  contentWrap: {
+    flex: 1,
+  },
   content: {
-    padding: 14,
-    paddingBottom: 30,
+    padding: 16,
+    paddingBottom: 40,
   },
   heroCard: {
-    backgroundColor: '#343330',
-    borderRadius: 16,
+    borderRadius: radii.lg,
+    borderWidth: 1,
     marginBottom: 12,
     padding: 16,
   },
-  heroCardDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
-    borderWidth: 1,
-  },
   heroKicker: {
-    color: '#F5BB9A',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
     letterSpacing: 1.4,
     marginBottom: 6,
     textTransform: 'uppercase',
   },
   heroTitle: {
-    color: '#FFFFFF',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 27,
-    fontWeight: '700',
-    lineHeight: 30,
-  },
-  heroTitleEm: {
-    color: '#FFD9DA',
-    fontStyle: 'italic',
+    fontSize: 31,
+    lineHeight: 33,
   },
   heroDesc: {
-    color: 'rgba(255,217,218,0.75)',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 11,
-    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 9,
   },
   photoContainer: {
     marginBottom: 12,
   },
   cameraBox: {
     alignItems: 'center',
-    backgroundColor: '#FFF5F0',
-    borderColor: '#EDE8E3',
     borderRadius: 14,
     borderStyle: 'dashed',
     borderWidth: 1.5,
-    height: 180,
+    height: 186,
     justifyContent: 'center',
   },
-  cameraBoxDark: {
-    borderColor: '#2B2724',
-  },
   cameraText: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 11,
     marginTop: 8,
+    textTransform: 'uppercase',
   },
   previewImageOnly: {
     borderRadius: 14,
-    height: 200,
+    height: 210,
     width: '100%',
   },
   photoActions: {
@@ -414,9 +387,7 @@ const styles = StyleSheet.create({
   },
   photoBtn: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row',
@@ -424,88 +395,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 11,
   },
-  photoBtnDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
-  },
   photoBtnText: {
-    color: '#343330',
     fontSize: 13,
-    fontWeight: '600',
   },
   formGroup: {
     marginBottom: 12,
   },
   label: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 11,
-    letterSpacing: 0.4,
+    fontSize: 10,
+    letterSpacing: 1.1,
     marginBottom: 6,
     textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
     borderRadius: 12,
     borderWidth: 1,
-    color: '#343330',
     fontSize: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  inputDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
-    color: '#F9F3EF',
-  },
   textArea: {
-    height: 92,
+    height: 98,
     textAlignVertical: 'top',
   },
   evaluateBtn: {
     alignItems: 'center',
-    backgroundColor: '#C5050C',
-    borderRadius: 12,
+    borderRadius: 14,
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'center',
     marginTop: 4,
     paddingVertical: 14,
   },
-  evaluateBtnDisabled: {
-    backgroundColor: '#CFA4A6',
-  },
   evaluateBtnText: {
-    color: '#fff',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
   },
   sectionHead: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
-    letterSpacing: 1.3,
+    letterSpacing: 1.4,
     marginBottom: 8,
     textTransform: 'uppercase',
   },
   detectedRow: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
     marginBottom: 10,
     overflow: 'hidden',
   },
-  detectedRowDark: {
-    backgroundColor: '#1F1B18',
-    borderColor: '#2B2724',
-  },
   detectedImageWrap: {
-    backgroundColor: '#FFD9DA',
-    width: 94,
+    width: 98,
   },
   previewImage: {
     height: '100%',
@@ -517,21 +458,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   detectedTag: {
-    color: '#C5050C',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 9,
     letterSpacing: 1.2,
     marginBottom: 3,
     textTransform: 'uppercase',
   },
   detectedName: {
-    color: '#343330',
     fontSize: 15,
-    fontWeight: '700',
     marginBottom: 2,
   },
   detectedSub: {
-    color: '#9C9692',
     fontSize: 11,
     lineHeight: 16,
   },
@@ -542,14 +478,10 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   karmaNumber: {
-    color: '#343330',
-    fontFamily: Platform.select({ ios: 'ui-serif', default: 'serif' }),
-    fontSize: 25,
-    fontWeight: '700',
+    fontSize: 28,
+    lineHeight: 30,
   },
   karmaLabel: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -560,39 +492,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   relayBtn: {
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     flex: 1,
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
-  relayBtnNeighbor: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDE8E3',
-  },
-  relayBtnLibrary: {
-    backgroundColor: '#FFD9DA',
-    borderColor: 'rgba(197,5,12,0.3)',
-  },
-  relayTitleDark: {
-    color: '#343330',
+  relayTitle: {
     fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  relaySubDark: {
-    color: '#5C5956',
-    fontSize: 10,
-  },
-  relayTitleRed: {
-    color: '#C5050C',
-    fontSize: 12,
-    fontWeight: '700',
     marginTop: 2,
   },
   relaySub: {
-    color: '#9C9692',
     fontSize: 10,
   },
   cancelBtn: {
@@ -600,12 +511,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   cancelBtnText: {
-    color: '#9C9692',
-    fontFamily: Platform.select({ ios: 'ui-monospace', default: 'monospace' }),
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  actionBtnDisabled: {
-    opacity: 0.6,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
 });
