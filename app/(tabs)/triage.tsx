@@ -114,17 +114,28 @@ export default function TriageScreen() {
     setIsVisionAnalyzing(true);
     try {
       const suggestion = await analyzeImageWithGoogleVision(imageBase64);
-      setItemName(suggestion.itemName);
-      if (!itemDesc.trim()) {
+      const confidencePct = Math.round(suggestion.confidence * 100);
+      const shouldForceAutofill = suggestion.confidence >= 0.55;
+
+      if (shouldForceAutofill || !itemName.trim()) {
+        setItemName(suggestion.itemName);
+      }
+      if (shouldForceAutofill || !itemDesc.trim()) {
         setItemDesc(suggestion.description);
       }
-      setEstimatedPriceInput(String(suggestion.estimatedPrice));
-      setUtilityLevel(suggestion.utilityLevel);
-      setConditionLevel(suggestion.conditionLevel);
+      if (shouldForceAutofill || !estimatedPriceInput.trim()) {
+        setEstimatedPriceInput(String(suggestion.estimatedPrice));
+      }
+      if (shouldForceAutofill) {
+        setUtilityLevel(suggestion.utilityLevel);
+        setConditionLevel(suggestion.conditionLevel);
+      }
 
       Alert.alert(
         'AI Suggestions Ready',
-        `Detected ${suggestion.itemName} (${Math.round(suggestion.confidence * 100)}% confidence). Review fields before posting.`
+        confidencePct >= 55
+          ? `Detected ${suggestion.itemName} (${confidencePct}% confidence). Fields updated, review before posting.`
+          : `Detected ${suggestion.itemName} (${confidencePct}% confidence). Suggestion is low-confidence, so review and adjust manually.`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to analyze image with Google Vision.';
